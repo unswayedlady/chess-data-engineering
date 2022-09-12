@@ -215,7 +215,7 @@ object Chess {
 
     import spark.implicits._
 
-    var titledPlayersJsonDf = spark.read.json(titledPlayersJson.toDS()).selectExpr("explode(players) as players")
+    var titledPlayersJsonDf = spark.read.json(titledPlayersJson.toDS()).selectExpr("explode(players) as players").limit(50)
 
     // -> Vertex
 
@@ -323,11 +323,10 @@ object Chess {
 
 
     def getTournamentsInfo(tournament: String) : String = {
-      try {
-        requests.get("https://api.chess.com/pub/tournament/" + tournament).text()
-      } catch {
-        case _: RequestFailedException => null
+      if (tournament != null && tournament != ""){
+        return requests.get("https://api.chess.com/pub/tournament/" + tournament).text()
       }
+      null
     }
 
     val getTournamentsInfoUdf = udf(getTournamentsInfo(_:String) : String)
@@ -338,16 +337,14 @@ object Chess {
       ))
 
     gamesDf = gamesDf
-      .where(col("player_tournaments").notEqual(""))
       .withColumn("round_tournaments", from_json(getTournamentsInfoUdf(col("player_tournaments")), tournamentsSchema))
       .withColumn("round_tournaments", col("round_tournaments.rounds")(0))
 
     def getRoundTournamentsInfo(round_url: String) : String = {
-      try {
-        requests.get(round_url).text()
-      } catch {
-        case _: RequestFailedException => null
+      if (round_url != null){
+        return requests.get(round_url).text()
       }
+      null
     }
 
     val getRoundTournamentsInfoUdf = udf(getRoundTournamentsInfo(_:String) : String)
@@ -358,16 +355,16 @@ object Chess {
       ))
 
     gamesDf = gamesDf
+      .na
+      .drop()
       .select(col("player_tournaments"), from_json(getRoundTournamentsInfoUdf(col("round_tournaments")), roundTournamentsSchema).alias("group_round_tournaments"))
       .withColumn("group_round_tournaments", col("group_round_tournaments.groups")(0))
 
-
     def getGamesInfo(games_url: String) : String = {
-      try {
-        requests.get(games_url).text()
-      } catch {
-        case _: RequestFailedException => null
+      if (games_url != null){
+        return requests.get(games_url).text()
       }
+      null
 
     }
 
@@ -390,9 +387,14 @@ object Chess {
       ))
 
     gamesDf
+      .na
+      .drop()
       .select(col("player_tournaments"), from_json(getGamesInfoUdf(col("group_round_tournaments")), roundGamesSchema).alias("games_tournaments"))
-//      .select(explode(col("games_tournaments.games")).alias("games_tournaments"))
-      .show()
+      .select(col("player_tournaments"), explode(col("games_tournaments.games")).alias("games_tournaments"))
+      .select(col("player_tournaments"), col("games_tournaments.*"))
+      .withColumn("white", col("white.username"))
+      .withColumn("black", col("black.username"))
+      .show(5)
 
 
 

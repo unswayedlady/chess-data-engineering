@@ -389,7 +389,11 @@ object Chess {
         ))), nullable = true)
       ))
 
-    gamesDf.show()
+    gamesDf
+      .select(col("player_tournaments"), from_json(getGamesInfoUdf(col("group_round_tournaments")), roundGamesSchema).alias("games_tournaments"))
+//      .select(explode(col("games_tournaments.games")).alias("games_tournaments"))
+      .show()
+
 
 
   }

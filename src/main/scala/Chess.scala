@@ -1,7 +1,9 @@
 //import org.apache.log4j.{Level, Logger}
+import io.netty.handler.timeout.TimeoutException
 import org.apache.spark.sql.functions.{col, concat_ws, element_at, explode, from_json, regexp_replace, split, udf}
 import org.apache.spark.sql.{DataFrame, Row, SparkSession, functions}
 import org.apache.spark.sql.types.{ArrayType, BooleanType, DoubleType, LongType, StringType, StructField, StructType, TimestampType}
+import org.omg.CORBA.portable.UnknownException
 import requests.RequestFailedException
 
 
@@ -16,8 +18,8 @@ object Chess {
       .builder
       .appName("Capítulo10")
       .master("local[*]")
-      .config("spark.network.timeout", "3000s")
-      .config("spark.executor.heartbeatInterval", "1500s")
+      .config("spark.network.timeout", "10000s")
+      .config("spark.executor.heartbeatInterval", "5000s")
 //      .enableHiveSupport()
       .getOrCreate()
 
@@ -211,7 +213,15 @@ object Chess {
     var titledPlayersJson = Seq[String]()
     val titles = Seq("GM", "WGM", "IM", "WIM", "FM", "WFM", "NM", "WNM", "CM", "WCM")
 
-    titles.foreach(title => titledPlayersJson = requests.get("https://api.chess.com/pub/titled/" + title).text() +: titledPlayersJson)
+    titles.foreach(title => {
+      try{
+        titledPlayersJson = requests.get("https://api.chess.com/pub/titled/" + title).text() +: titledPlayersJson
+      }catch{
+        case _ : requests.TimeoutException => null
+        case _ : UnknownException => null
+        case _ : RequestFailedException => null
+      }
+    })
 
     import spark.implicits._
 
@@ -222,20 +232,26 @@ object Chess {
     // Profile player
 
     def getProfilePlayerInfo(playerName: String) : String = {
-      requests.get("https://api.chess.com/pub/player/" + playerName).text()
+      try{
+        requests.get("https://api.chess.com/pub/player/" + playerName).text()
+      }catch{
+        case _ : requests.TimeoutException => null
+        case _ : UnknownException => null
+        case _ : RequestFailedException => null
+      }
     }
     val getProfilePlayerInfoUdf = udf(getProfilePlayerInfo(_:String) : String)
 
     val profilePlayerSchema = new StructType(Array(
-      new StructField("@id", StringType, true),
-      new StructField("url", StringType, true),
+//      new StructField("@id", StringType, true),
+//      new StructField("url", StringType, true),
       new StructField("username", StringType, true),
-      new StructField("player_id", LongType, true),
+//      new StructField("player_id", LongType, true),
       new StructField("title", StringType, true),
       new StructField("status", StringType, true),
       new StructField("name", StringType, true),
-      new StructField("avatar", StringType, true),
-      new StructField("location", StringType, true),
+//      new StructField("avatar", StringType, true),
+//      new StructField("location", StringType, true),
       new StructField("country", StringType, true),
       new StructField("joined", TimestampType, true),
       new StructField("last_online", TimestampType, true),
@@ -249,12 +265,21 @@ object Chess {
     titledPlayersJsonDf = titledPlayersJsonDf
       .select(from_json(getProfilePlayerInfoUdf(col("players")), profilePlayerSchema)
         .alias("profile_player"))
+      .na
+      .drop()
 
 
     // Player stats
 
     def getPlayerStatsInfo(playerName: String) : String = {
-      requests.get("https://api.chess.com/pub/player/" + playerName + "/stats").text()
+      try{
+        requests.get("https://api.chess.com/pub/player/" + playerName + "/stats").text()
+      }catch{
+        case _ : requests.TimeoutException => null
+        case _ : UnknownException => null
+        case _ : RequestFailedException => null
+      }
+
     }
 
     val getPlayerStatsInfoUdf = udf(getProfilePlayerInfo(_:String) : String)
@@ -300,12 +325,21 @@ object Chess {
     titledPlayersJsonDf = titledPlayersJsonDf
       .withColumn("player_stats",
         from_json(getPlayerStatsInfoUdf(col("profile_player.username")), statsSchema))
+      .na
+      .drop()
       .select(col("profile_player.*"), col("player_stats.*"))
 
     // -> Edges
 
     def getPlayerTournamentsInfo(playerName: String) : String = {
-      requests.get("https://api.chess.com/pub/player/" + playerName + "/tournaments").text()
+      try{
+        requests.get("https://api.chess.com/pub/player/" + playerName + "/tournaments").text()
+      }catch{
+        case _ : requests.TimeoutException => null
+        case _ : UnknownException => null
+        case _ : RequestFailedException => null
+      }
+
     }
 
     val getPlayerTournamentsInfoUdf = udf(getPlayerTournamentsInfo(_:String) : String)
@@ -316,6 +350,8 @@ object Chess {
 
     var gamesDf = titledPlayersJsonDf
       .select(from_json(getPlayerTournamentsInfoUdf(col("username")), playerTournamentsSchema).alias("player_tournaments"))
+      .na
+      .drop()
       .select(col("player_tournaments.finished")(0).alias("player_tournaments"))
       .select(split(col("player_tournaments"), "/").alias("player_tournaments"))
       .select(col("player_tournaments")(5).alias("player_tournaments"))
@@ -323,10 +359,20 @@ object Chess {
 
 
     def getTournamentsInfo(tournament: String) : String = {
-      if (tournament != null && tournament != ""){
-        return requests.get("https://api.chess.com/pub/tournament/" + tournament).text()
+      try{
+        if (tournament != null && tournament != ""){
+          return requests.get("https://api.chess.com/pub/tournament/" + tournament).text()
+        }
+        null
+      }catch{
+        case _ : RequestFailedException =>
+          null
+        case _ : requests.TimeoutException =>
+          null
+        case _ : UnknownException =>
+          null
       }
-      null
+
     }
 
     val getTournamentsInfoUdf = udf(getTournamentsInfo(_:String) : String)
@@ -342,7 +388,16 @@ object Chess {
 
     def getRoundTournamentsInfo(round_url: String) : String = {
       if (round_url != null){
-        return requests.get(round_url).text()
+        try{
+          return requests.get(round_url).text()
+        }catch {
+          case _ : RequestFailedException =>
+            return null
+          case _ : requests.TimeoutException =>
+            return null
+          case _ : UnknownException =>
+            return null
+        }
       }
       null
     }
@@ -362,7 +417,16 @@ object Chess {
 
     def getGamesInfo(games_url: String) : String = {
       if (games_url != null){
-        return requests.get(games_url).text()
+        try{
+          return requests.get(games_url).text()
+        }catch {
+          case _ : RequestFailedException =>
+            return null
+          case _ : requests.TimeoutException =>
+            return null
+          case _ : UnknownException =>
+            return null
+        }
       }
       null
 
@@ -382,11 +446,12 @@ object Chess {
           StructField("black", StructType(Array(
             StructField("rating", LongType, nullable = true),
             StructField("username", StringType, nullable = true)
-          )), nullable = true)
+          )), nullable = true),
+          StructField("eco", StringType, nullable = true)
         ))), nullable = true)
       ))
 
-    gamesDf
+    gamesDf = gamesDf
       .na
       .drop()
       .select(col("player_tournaments"), from_json(getGamesInfoUdf(col("group_round_tournaments")), roundGamesSchema).alias("games_tournaments"))
@@ -394,6 +459,35 @@ object Chess {
       .select(col("player_tournaments"), col("games_tournaments.*"))
       .withColumn("white", col("white.username"))
       .withColumn("black", col("black.username"))
+
+    import org.apache.spark.sql.functions._ // para obtener códigos de países en los vértices
+    titledPlayersJsonDf = titledPlayersJsonDf.withColumn("country", substring_index(col("country"), "/", -1))
+    gamesDf = gamesDf.withColumn("eco", substring_index(col("eco"), "/", -1))
+
+    // titledPlayersJson => Vertices 50
+    // gamesDf => Edges 20000
+
+    val playersVertices = titledPlayersJsonDf.withColumnRenamed("username", "id").distinct()
+
+    val gamesEdges = gamesDf
+      .withColumnRenamed("white", "src")
+      .withColumnRenamed("black", "dst")
+
+    import org.graphframes.GraphFrame
+    val chessGraph = GraphFrame(playersVertices, gamesEdges)
+    chessGraph.cache()
+
+    println(s"Total Number of players: ${chessGraph.vertices.count()}")
+    println(s"Total Number of matches in Graph: ${chessGraph.edges.count()}")
+
+    // queries
+
+    // 1º matches donde se jugó la defensa siciliana
+
+    chessGraph
+      .edges
+      .where(col("eco").contains("Sicilian-Defense"))
+      .select(col("eco"))
       .show(5)
 
 

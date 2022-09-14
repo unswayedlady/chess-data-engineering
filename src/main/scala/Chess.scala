@@ -1,4 +1,5 @@
-import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.expressions.Window
+import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
 import org.omg.CORBA.portable.UnknownException
@@ -19,13 +20,17 @@ object Chess {
 
     spark.sparkContext.setLogLevel("ERROR")
 
-    var titledPlayersJson = Seq[String]()
+    var titledPlayersJson = Seq[Row]()
     val titles = Seq("GM", "WGM", "IM", "WIM", "FM", "WFM", "NM", "WNM", "CM", "WCM")
+
+    // agarrar 5 de cada uno -> 5*10 = 50 vértices cumplido
+    // 3 partidas de 1 torneo para cada jugador 3*50=150
+    // registrar jugadores que no están
 
 
     titles.foreach(title => {
       try{
-        titledPlayersJson = requests.get("https://api.chess.com/pub/titled/" + title).text() +: titledPlayersJson
+        titledPlayersJson = Row(title, requests.get("https://api.chess.com/pub/titled/" + title).text()) +: titledPlayersJson
       }catch{
         case _ : requests.TimeoutException => null
         case _ : UnknownException => null
@@ -34,13 +39,37 @@ object Chess {
       }
     })
 
-    import spark.implicits._
+    import spark.sqlContext.implicits._
 
-    var titledPlayersJsonDf = spark
-      .read
-      .json(titledPlayersJson.toDS())
-      .selectExpr("explode(players) as players")
-      .limit(50)
+    var rdd = spark.sparkContext.parallelize(titledPlayersJson)
+
+    val schema = StructType(Array(
+      StructField("title", StringType, nullable = false),
+      StructField("players", StringType, nullable = false)
+    ))
+
+    var titledPlayersJsonDf = spark.sqlContext.createDataFrame(rdd, schema)
+
+    titledPlayersJsonDf = titledPlayersJsonDf.select(struct($"title", $"players").alias("info_players"))
+
+    titledPlayersJsonDf = titledPlayersJsonDf.withColumn("info_players",
+      struct(col("info_players.title"),
+        from_json(col("info_players.players"), StructType(Array(
+          StructField("players", ArrayType(StringType), nullable = false)
+        ))).alias("players")
+      )
+    )
+
+    titledPlayersJsonDf = titledPlayersJsonDf.select(
+      col("info_players.title").alias("title"),
+      explode(col("info_players.players.players")).alias("players")
+    )
+
+    val windowSpec = Window
+    .partitionBy("title")
+    .orderBy(desc("players"))
+
+    titledPlayersJsonDf = titledPlayersJsonDf.withColumn("row", row_number().over(windowSpec)).filter(col("row") <= 5).drop("row", "title")
 
     // -> Vertex
 
@@ -80,67 +109,7 @@ object Chess {
       .na
       .drop()
 
-
-    // Player stats
-
-    def getPlayerStatsInfo(playerName: String) : String = {
-      try{
-        requests.get("https://api.chess.com/pub/player/" + playerName + "/stats").text()
-      }catch{
-        case _ : requests.TimeoutException => null
-        case _ : UnknownException => null
-        case _ : RequestFailedException => null
-        case _ : InvalidCertException => null
-      }
-
-    }
-
-    val getPlayerStatsInfoUdf = udf(getPlayerStatsInfo(_:String) : String)
-
-    val statsSchema = StructType(Array(
-      StructField("last", new StructType(Array(
-        StructField("date", TimestampType, nullable = true),
-        StructField("rating", LongType, nullable = true)
-      )), nullable = true),
-      StructField("best", new StructType(Array(
-        StructField("date", TimestampType, nullable = true),
-        StructField("rating", LongType, nullable = true)
-      )), nullable = true),
-      StructField("record", new StructType(Array(
-        StructField("win", LongType, nullable = true),
-        StructField("loss", LongType, nullable = true),
-        StructField("draw", LongType, nullable = true),
-        StructField("time_per_move", LongType, nullable = true),
-        StructField("timeout_percent", DoubleType, nullable = true)
-      )), nullable = true),
-      StructField("tournament", new StructType(Array(
-        StructField("count", LongType, nullable = true),
-        StructField("withdraw", LongType, nullable = true),
-        StructField("points", LongType, nullable = true),
-        StructField("highest_finish", LongType, nullable = true),
-      )), nullable = true)
-    ))
-
-    val playerStatsSchema = new StructType(Array(
-      StructField("chess_daily", statsSchema, nullable = true),
-      StructField("chess_rapid", statsSchema, nullable = true),
-      StructField("chess_blitz", statsSchema, nullable = true),
-      StructField("chess_bullet", statsSchema, nullable = true),
-      StructField("tactics", new StructType(Array(
-        StructField("highest", LongType, nullable = true),
-        StructField("lowest", LongType, nullable = true))), nullable = true),
-      StructField("lessons", new StructType(Array(
-        StructField("highest", LongType, nullable = true),
-        StructField("lowest", LongType, nullable = true)))
-        , nullable = true)
-    ))
-
-    titledPlayersJsonDf = titledPlayersJsonDf
-      .withColumn("player_stats",
-        from_json(getPlayerStatsInfoUdf(col("profile_player.username")), playerStatsSchema))
-      .na
-      .drop()
-      .select(col("profile_player.*"), col("player_stats.*"))
+    titledPlayersJsonDf = titledPlayersJsonDf.select("profile_player.*")
 
     // -> Edges
 
@@ -171,7 +140,6 @@ object Chess {
       .select(col("player_tournaments")(5).alias("player_tournaments"))
       .select(regexp_replace(col("player_tournaments"), "\",\"@id\":\"https:", "").alias("player_tournaments"))
 
-
     def getTournamentsInfo(tournament: String) : String = {
       try{
         if (tournament != null && tournament != ""){
@@ -179,12 +147,9 @@ object Chess {
         }
         null
       }catch{
-        case _ : RequestFailedException =>
-          null
-        case _ : requests.TimeoutException =>
-          null
-        case _ : UnknownException =>
-          null
+        case _ : RequestFailedException => null
+        case _ : requests.TimeoutException => null
+        case _ : UnknownException => null
         case _ : InvalidCertException => null
       }
 
@@ -200,6 +165,8 @@ object Chess {
     gamesDf = gamesDf
       .withColumn("round_tournaments", from_json(getTournamentsInfoUdf(col("player_tournaments")), tournamentsSchema))
       .withColumn("round_tournaments", col("round_tournaments.rounds")(0))
+
+//    gamesDf.show() // hasta aquí bien
 
     def getRoundTournamentsInfo(round_url: String) : String = {
       if (round_url != null){
@@ -227,8 +194,6 @@ object Chess {
       ))
 
     gamesDf = gamesDf
-      .na
-      .drop()
       .select(col("player_tournaments"), from_json(getRoundTournamentsInfoUdf(col("round_tournaments")), roundTournamentsSchema).alias("group_round_tournaments"))
       .withColumn("group_round_tournaments", col("group_round_tournaments.groups")(0))
 
@@ -270,11 +235,9 @@ object Chess {
       ))
 
     gamesDf = gamesDf
-      .na
-      .drop()
-      .select(col("player_tournaments"), from_json(getGamesInfoUdf(col("group_round_tournaments")), roundGamesSchema).alias("games_tournaments"))
-      .select(col("player_tournaments"), array(element_at($"games_tournaments.games", 1), element_at($"games_tournaments.games", 2), element_at($"games_tournaments.games", 3)).alias("games_tournaments"))
-      .select(col("player_tournaments"), explode(col("games_tournaments")).alias("games_tournaments"))
+      .select(col("player_tournaments"), from_json(getGamesInfoUdf(col("group_round_tournaments")),
+        roundGamesSchema).alias("games_tournaments"))
+      .select(col("player_tournaments"), explode($"games_tournaments.games").alias("games_tournaments"))
       .select(col("player_tournaments"), col("games_tournaments.*"))
       .withColumn("white", col("white.username"))
       .withColumn("black", col("black.username"))
@@ -284,9 +247,7 @@ object Chess {
     titledPlayersJsonDf = titledPlayersJsonDf // para obtener códigos de países en los vértices
       .withColumn("country", substring_index(col("country"), "/", -1))
     gamesDf = gamesDf // para obtener aperturas
-      .withColumn("eco", substring_index(col("eco"), "/", -1))
-
-    // construcción del grafo
+      .withColumn("eco", substring_index(col("eco"), "/", -1))// construcción del grafo
 
     val playersVertices = titledPlayersJsonDf
       .withColumnRenamed("username", "id").distinct()
@@ -300,9 +261,6 @@ object Chess {
     chessGraph.cache()
 
     // basic queries
-
-    println(s"Total Number of players: ${chessGraph.vertices.count()}")
-    println(s"Total Number of matches in Graph: ${chessGraph.edges.count()}")
 
     // 1º matches donde se jugó la defensa siciliana
 
@@ -328,19 +286,17 @@ object Chess {
 //     3º matches donde alguno de los dos jugadores es sudafricano
 
     motif
-      .filter("b.country == \"ZA\" OR n.country == \"ZA\"")
+      .filter("b.country == \"RU\" OR n.country == \"ZA\"")
       .show(5)
 
     // 4º matches donde el jugador de blancas se registró antes del 2022-09-12 00:00
 
-    motif
-      .filter(col("b.joined") < "2022-09-10 12:35")
-      .show(5)
+//    motif
+//      .filter(col("b.joined") < "2022-09-10 12:35")
+//      .show(5)
 
-    val inDeg = chessGraph.inDegrees
-    inDeg.orderBy(desc("inDegree")).show(5, false)
-
-
+//    val inDeg = chessGraph.inDegrees
+//    inDeg.orderBy(desc("inDegree")).show(5, truncate = false)
 
   }
 

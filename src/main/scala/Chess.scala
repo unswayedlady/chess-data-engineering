@@ -1,18 +1,13 @@
-//import org.apache.log4j.{Level, Logger}
-import io.netty.handler.timeout.TimeoutException
-import org.apache.spark.sql.functions.{col, concat_ws, element_at, explode, from_json, regexp_replace, split, udf}
-import org.apache.spark.sql.{DataFrame, Row, SparkSession, functions}
-import org.apache.spark.sql.types.{ArrayType, BooleanType, DoubleType, LongType, StringType, StructField, StructType, TimestampType}
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions._
+import org.apache.spark.sql.types._
 import org.omg.CORBA.portable.UnknownException
-import requests.RequestFailedException
+import requests.{InvalidCertException, RequestFailedException}
 
 
 object Chess {
 
-
   def main(args: Array[String]): Unit = {
-
-//    Logger.getRootLogger.setLevel(Level.OFF)
 
     val spark = SparkSession
       .builder
@@ -20,198 +15,13 @@ object Chess {
       .master("local[*]")
       .config("spark.network.timeout", "10000s")
       .config("spark.executor.heartbeatInterval", "5000s")
-//      .enableHiveSupport()
       .getOrCreate()
 
     spark.sparkContext.setLogLevel("ERROR")
 
-    // sacamos json con nombres de jugadores grandes maestros
-
-    /*val responseJugadoresGM = requests.get("https://api.chess.com/pub/titled/GM")
-
-    import spark.implicits._
-
-    // sacamos un dataframe del json
-
-    var jugadoresGMDf = spark.read.json(Seq(responseJugadoresGM.text()).toDS)
-//    jugadoresGMDf.show() // columna players
-
-    // lo colocamos en el formato indicado
-
-    jugadoresGMDf = jugadoresGMDf.selectExpr("explode(players) as player")
-//    jugadoresGMDf.show() // columna player
-
-    // modificamos el dataframe anterior con la info de los jugadores
-
-    spark.udf.register("getProfilePlayerInfo", getProfilePlayerInfo(_:String):String)
-
-    def getProfilePlayerInfo(playerName: String) : String = {
-      requests.get("https://api.chess.com/pub/player/" + playerName).text()
-    }
-    val getProfilePlayerInfoUdf = udf(getProfilePlayerInfo(_:String) : String)
-
-    val profilePlayerSchema = new StructType(Array(
-      new StructField("avatar", StringType, true),
-      new StructField("player_id", LongType, true),
-      new StructField("@id", StringType, true),
-      new StructField("url", StringType, true),
-
-      new StructField("name", StringType, true),
-      new StructField("username", StringType, true),
-      new StructField("title", StringType, true),
-      new StructField("followers", LongType, true),
-
-      new StructField("country", StringType, true),
-      new StructField("last_online", TimestampType, true),
-      new StructField("joined", TimestampType, true),
-      new StructField("status", StringType, true),
-      new StructField("is_streamer", BooleanType, true),
-      new StructField("verified", BooleanType, true),
-    ))
-
-    jugadoresGMDf = jugadoresGMDf.select(from_json(getProfilePlayerInfoUdf(col("player")), profilePlayerSchema).alias("info-player"))
-      .select(col("info-player.*"))
-
-    jugadoresGMDf.show()*/
-
-//    jugadoresGMDf.printSchema()
-//    jugadoresGMDf.select(col("username")).show()
-
-//    jugadoresGMDf.limit(10).write.saveAsTable("jugadoresGM")
-
-//    spark.catalog.listTables().show()
-
-//    spark.sql("""DROP TABLE jugadoresGM""")
-
-    //--------------------------------------------------
-
-
-    // manera de crear tablas:
-//    val df = spark.read.json("data/flight-data/json/2015-summary.json") // leer json
-
-//    df.createOrReplaceTempView("flights_temporal") // crea tabla temporal
-//    // 'flights_temporal' -> existe mientras existe la SparkSession
-
-//    df.write.saveAsTable("flights") // crear tabla permanente -> a menos
-    // que se borre con el drop, se queda almacenada en el spark-warehouse
-
-//    spark.sql("""SHOW TABLES IN default""").show() // muestra tablas del catálogo
-//
-//    spark.sql("""SELECT * FROM flights""").show() // muestra filas de la tabla flights
-//
-//    spark.catalog.listTables().show() // muestra tablas del catálogo
-
-//    spark.sql("""show databases""").show()
-
-
-    //views => Una vista es una tabla virtual cuyo contenido está definido por una consulta.
-
-    /*// crear vista
-    spark.sql(
-      """
-        |CREATE VIEW IF NOT EXISTS nested_data AS
-        |    SELECT (DEST_COUNTRY_NAME, ORIGIN_COUNTRY_NAME) as country, count FROM flights
-        |""".stripMargin)
-
-    //consultas
-
-    spark.sql(""" SELECT * FROM nested_data """).show()
-    spark.sql(""" SELECT * FROM nested_data """).printSchema()
-
-    spark.sql(""" SELECT country.DEST_COUNTRY_NAME, count FROM nested_data """).show()
-    spark.sql(""" SELECT country.*, count FROM nested_data """).show()
-
-    //agregación => el groupBy necesita una función de agregación
-
-    spark.sql(
-      """
-        |SELECT DEST_COUNTRY_NAME as new_name, collect_list(count) as flight_counts,
-        |  collect_set(ORIGIN_COUNTRY_NAME) as origin_set
-        |FROM flights GROUP BY DEST_COUNTRY_NAME
-        |""".stripMargin).show()
-
-    spark.sql(
-      """
-        |SELECT DEST_COUNTRY_NAME, ARRAY(1, 2, 3) FROM flights
-        |""".stripMargin).show()
-
-
-    spark.sql(
-      """
-        |SELECT DEST_COUNTRY_NAME as new_name, collect_list(count)[0]
-        |FROM flights GROUP BY DEST_COUNTRY_NAME
-        |""".stripMargin).show()
-
-    spark.sql(
-      """
-        |  CREATE OR REPLACE TEMP VIEW flights_agg AS
-        |  SELECT DEST_COUNTRY_NAME, collect_list(count) as collected_counts
-        |  FROM flights GROUP BY DEST_COUNTRY_NAME
-        |""".stripMargin)
-
-    spark.sql(
-      """
-        |SELECT * from flights_agg
-        |""".stripMargin).show()
-
-
-    spark.sql(
-      """
-        |SELECT explode(collected_counts), DEST_COUNTRY_NAME FROM flights_agg
-        |""".stripMargin).show()
-
-    spark.sql("""SHOW FUNCTIONS""").show()
-
-    spark.sql("""SHOW SYSTEM FUNCTIONS""").show()
-
-    spark.sql("""SHOW USER FUNCTIONS""").show()
-
-    spark.sql("""SHOW FUNCTIONS "s*"""").show()
-
-    //borrar tablas
-    spark.sql("""DROP TABLE flights""") // borrar tabla permanente
-    spark.sql("""DROP VIEW IF EXISTS nested_data;""")*/
-
-    //graphs - bikes
-
-    /*val bikeStations = spark.read.option("header","true")
-      .csv("data/bike-data/201508_station_data.csv")
-    val tripData = spark.read.option("header","true")
-      .csv("data/bike-data/201508_trip_data.csv")*/
-
-//    bikeStations.show()
-//    tripData.show()
-
-    /*val stationVertices = bikeStations.withColumnRenamed("name", "id").distinct()
-    val tripEdges = tripData
-      .withColumnRenamed("Start Station", "src")
-      .withColumnRenamed("End Station", "dst")
-
-    import org.graphframes.GraphFrame
-    val stationGraph = GraphFrame(stationVertices, tripEdges)
-    stationGraph.cache()
-
-    println(s"Total Number of Stations: ${stationGraph.vertices.count()}")
-    println(s"Total Number of Trips in Graph: ${stationGraph.edges.count()}")
-    println(s"Total Number of Trips in Original Data: ${tripData.count()}")*/
-
-//    stationGraph.edges.printSchema()
-
-    /*import org.apache.spark.sql.functions.desc
-    stationGraph.edges.groupBy("src", "dst").count().orderBy(desc("count")).show(10)
-
-    // in Scala
-    stationGraph.edges
-      .where("src = 'Townsend at 7th' OR dst = 'Townsend at 7th'")
-      .groupBy("src", "dst").count()
-      .orderBy(desc("count"))
-      .show(10)*/
-
-
-    // Código de grafos nuevo
-
     var titledPlayersJson = Seq[String]()
     val titles = Seq("GM", "WGM", "IM", "WIM", "FM", "WFM", "NM", "WNM", "CM", "WCM")
+
 
     titles.foreach(title => {
       try{
@@ -220,12 +30,17 @@ object Chess {
         case _ : requests.TimeoutException => null
         case _ : UnknownException => null
         case _ : RequestFailedException => null
+        case _ : InvalidCertException => null
       }
     })
 
     import spark.implicits._
 
-    var titledPlayersJsonDf = spark.read.json(titledPlayersJson.toDS()).selectExpr("explode(players) as players").limit(50)
+    var titledPlayersJsonDf = spark
+      .read
+      .json(titledPlayersJson.toDS())
+      .selectExpr("explode(players) as players")
+      .limit(50)
 
     // -> Vertex
 
@@ -238,28 +53,25 @@ object Chess {
         case _ : requests.TimeoutException => null
         case _ : UnknownException => null
         case _ : RequestFailedException => null
+        case _ : InvalidCertException =>
+          null
       }
     }
     val getProfilePlayerInfoUdf = udf(getProfilePlayerInfo(_:String) : String)
 
     val profilePlayerSchema = new StructType(Array(
-//      new StructField("@id", StringType, true),
-//      new StructField("url", StringType, true),
-      new StructField("username", StringType, true),
-//      new StructField("player_id", LongType, true),
-      new StructField("title", StringType, true),
-      new StructField("status", StringType, true),
-      new StructField("name", StringType, true),
-//      new StructField("avatar", StringType, true),
-//      new StructField("location", StringType, true),
-      new StructField("country", StringType, true),
-      new StructField("joined", TimestampType, true),
-      new StructField("last_online", TimestampType, true),
-      new StructField("followers", LongType, true),
-      new StructField("is_streamer", BooleanType, true),
-      new StructField("verified", BooleanType, true),
-      new StructField("twitch_url", BooleanType, true),
-      new StructField("fide", LongType, true),
+      StructField("username", StringType, nullable = true),
+      StructField("title", StringType, nullable = true),
+      StructField("status", StringType, nullable = true),
+      StructField("name", StringType, nullable = true),
+      StructField("country", StringType, nullable = true),
+      StructField("joined", TimestampType, nullable = true),
+      StructField("last_online", TimestampType, nullable = true),
+      StructField("followers", LongType, nullable = true),
+      StructField("is_streamer", BooleanType, nullable = true),
+      StructField("verified", BooleanType, nullable = true),
+      StructField("twitch_url", BooleanType, nullable = true),
+      StructField("fide", LongType, nullable = true),
     ))
 
     titledPlayersJsonDf = titledPlayersJsonDf
@@ -278,53 +90,54 @@ object Chess {
         case _ : requests.TimeoutException => null
         case _ : UnknownException => null
         case _ : RequestFailedException => null
+        case _ : InvalidCertException => null
       }
 
     }
 
-    val getPlayerStatsInfoUdf = udf(getProfilePlayerInfo(_:String) : String)
+    val getPlayerStatsInfoUdf = udf(getPlayerStatsInfo(_:String) : String)
 
     val statsSchema = StructType(Array(
-      new StructField("last", new StructType(Array(
-        new StructField("date", TimestampType, true),
-        new StructField("rating", LongType, true)
-      )), true),
-      new StructField("best", new StructType(Array(
-        new StructField("date", TimestampType, true),
-        new StructField("rating", LongType, true)
-      )), true),
-      new StructField("record", new StructType(Array(
-        new StructField("win", LongType, true),
-        new StructField("loss", LongType, true),
-        new StructField("draw", LongType, true),
-        new StructField("time_per_move", LongType, true),
-        new StructField("timeout_percent", DoubleType, true),
-      )), true),
-      new StructField("tournament", new StructType(Array(
-        new StructField("count", LongType, true),
-        new StructField("withdraw", LongType, true),
-        new StructField("points", LongType, true),
-        new StructField("highest_finish", LongType, true),
-      )), true)
+      StructField("last", new StructType(Array(
+        StructField("date", TimestampType, nullable = true),
+        StructField("rating", LongType, nullable = true)
+      )), nullable = true),
+      StructField("best", new StructType(Array(
+        StructField("date", TimestampType, nullable = true),
+        StructField("rating", LongType, nullable = true)
+      )), nullable = true),
+      StructField("record", new StructType(Array(
+        StructField("win", LongType, nullable = true),
+        StructField("loss", LongType, nullable = true),
+        StructField("draw", LongType, nullable = true),
+        StructField("time_per_move", LongType, nullable = true),
+        StructField("timeout_percent", DoubleType, nullable = true)
+      )), nullable = true),
+      StructField("tournament", new StructType(Array(
+        StructField("count", LongType, nullable = true),
+        StructField("withdraw", LongType, nullable = true),
+        StructField("points", LongType, nullable = true),
+        StructField("highest_finish", LongType, nullable = true),
+      )), nullable = true)
     ))
 
     val playerStatsSchema = new StructType(Array(
-      new StructField("chess_daily", statsSchema, true),
-      new StructField("chess_rapid", statsSchema, true),
-      new StructField("chess_blitz", statsSchema, true),
-      new StructField("chess_bullet", statsSchema, true),
-      new StructField("tactics", new StructType(Array(
-        new StructField("highest", LongType, true),
-        new StructField("lowest", LongType, true))), true),
-      new StructField("lessons", new StructType(Array(
-        new StructField("highest", LongType, true),
-        new StructField("lowest", LongType, true))), true)
+      StructField("chess_daily", statsSchema, nullable = true),
+      StructField("chess_rapid", statsSchema, nullable = true),
+      StructField("chess_blitz", statsSchema, nullable = true),
+      StructField("chess_bullet", statsSchema, nullable = true),
+      StructField("tactics", new StructType(Array(
+        StructField("highest", LongType, nullable = true),
+        StructField("lowest", LongType, nullable = true))), nullable = true),
+      StructField("lessons", new StructType(Array(
+        StructField("highest", LongType, nullable = true),
+        StructField("lowest", LongType, nullable = true)))
+        , nullable = true)
     ))
-
 
     titledPlayersJsonDf = titledPlayersJsonDf
       .withColumn("player_stats",
-        from_json(getPlayerStatsInfoUdf(col("profile_player.username")), statsSchema))
+        from_json(getPlayerStatsInfoUdf(col("profile_player.username")), playerStatsSchema))
       .na
       .drop()
       .select(col("profile_player.*"), col("player_stats.*"))
@@ -338,6 +151,7 @@ object Chess {
         case _ : requests.TimeoutException => null
         case _ : UnknownException => null
         case _ : RequestFailedException => null
+        case _ : InvalidCertException => null
       }
 
     }
@@ -352,7 +166,7 @@ object Chess {
       .select(from_json(getPlayerTournamentsInfoUdf(col("username")), playerTournamentsSchema).alias("player_tournaments"))
       .na
       .drop()
-      .select(col("player_tournaments.finished")(0).alias("player_tournaments"))
+      .select(element_at($"player_tournaments.finished", 1).alias("player_tournaments"))
       .select(split(col("player_tournaments"), "/").alias("player_tournaments"))
       .select(col("player_tournaments")(5).alias("player_tournaments"))
       .select(regexp_replace(col("player_tournaments"), "\",\"@id\":\"https:", "").alias("player_tournaments"))
@@ -371,6 +185,7 @@ object Chess {
           null
         case _ : UnknownException =>
           null
+        case _ : InvalidCertException => null
       }
 
     }
@@ -396,6 +211,8 @@ object Chess {
           case _ : requests.TimeoutException =>
             return null
           case _ : UnknownException =>
+            return null
+          case _ : InvalidCertException =>
             return null
         }
       }
@@ -426,10 +243,11 @@ object Chess {
             return null
           case _ : UnknownException =>
             return null
+          case _ : InvalidCertException =>
+            return null
         }
       }
       null
-
     }
 
     val getGamesInfoUdf = udf(getGamesInfo(_:String) : String)
@@ -455,19 +273,23 @@ object Chess {
       .na
       .drop()
       .select(col("player_tournaments"), from_json(getGamesInfoUdf(col("group_round_tournaments")), roundGamesSchema).alias("games_tournaments"))
-      .select(col("player_tournaments"), explode(col("games_tournaments.games")).alias("games_tournaments"))
+      .select(col("player_tournaments"), array(element_at($"games_tournaments.games", 1), element_at($"games_tournaments.games", 2), element_at($"games_tournaments.games", 3)).alias("games_tournaments"))
+      .select(col("player_tournaments"), explode(col("games_tournaments")).alias("games_tournaments"))
       .select(col("player_tournaments"), col("games_tournaments.*"))
       .withColumn("white", col("white.username"))
       .withColumn("black", col("black.username"))
 
-    import org.apache.spark.sql.functions._ // para obtener códigos de países en los vértices
-    titledPlayersJsonDf = titledPlayersJsonDf.withColumn("country", substring_index(col("country"), "/", -1))
-    gamesDf = gamesDf.withColumn("eco", substring_index(col("eco"), "/", -1))
+    import org.apache.spark.sql.functions._
 
-    // titledPlayersJson => Vertices 50
-    // gamesDf => Edges 20000
+    titledPlayersJsonDf = titledPlayersJsonDf // para obtener códigos de países en los vértices
+      .withColumn("country", substring_index(col("country"), "/", -1))
+    gamesDf = gamesDf // para obtener aperturas
+      .withColumn("eco", substring_index(col("eco"), "/", -1))
 
-    val playersVertices = titledPlayersJsonDf.withColumnRenamed("username", "id").distinct()
+    // construcción del grafo
+
+    val playersVertices = titledPlayersJsonDf
+      .withColumnRenamed("username", "id").distinct()
 
     val gamesEdges = gamesDf
       .withColumnRenamed("white", "src")
@@ -477,18 +299,46 @@ object Chess {
     val chessGraph = GraphFrame(playersVertices, gamesEdges)
     chessGraph.cache()
 
+    // basic queries
+
     println(s"Total Number of players: ${chessGraph.vertices.count()}")
     println(s"Total Number of matches in Graph: ${chessGraph.edges.count()}")
-
-    // queries
 
     // 1º matches donde se jugó la defensa siciliana
 
     chessGraph
       .edges
       .where(col("eco").contains("Sicilian-Defense"))
-      .select(col("eco"))
       .show(5)
+
+    // 2º jugador con mayor número de seguidores de Chess.com según los matches registrados
+
+    chessGraph
+      .vertices
+      .groupBy($"id")
+      .agg(max("followers").alias("max_followers"))
+      .select($"id", $"max_followers")
+      .orderBy(desc("max_followers"))
+      .show(1)
+
+    // motif finding
+
+    val motif = chessGraph.find("(b)-[e]->(n)")
+
+//     3º matches donde alguno de los dos jugadores es sudafricano
+
+    motif
+      .filter("b.country == \"ZA\" OR n.country == \"ZA\"")
+      .show(5)
+
+    // 4º matches donde el jugador de blancas se registró antes del 2022-09-12 00:00
+
+    motif
+      .filter(col("b.joined") < "2022-09-10 12:35")
+      .show(5)
+
+    val inDeg = chessGraph.inDegrees
+    inDeg.orderBy(desc("inDegree")).show(5, false)
 
 
 

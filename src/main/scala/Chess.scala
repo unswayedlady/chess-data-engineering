@@ -1,302 +1,182 @@
-import org.apache.spark.sql.expressions.Window
-import org.apache.spark.sql.{Row, SparkSession}
-import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types._
-import org.omg.CORBA.portable.UnknownException
-import requests.{InvalidCertException, RequestFailedException}
+import org.apache.spark.sql.SparkSession
 
+import scala.util.Try
+import spray.json._
+
+case class TitledPlayers(players: List[String])
+
+case class Profile(username: String, // the username of this player
+              title: Option[String], // (optional) abbreviation of chess title, if any
+              status: String, // account status: closed, closed:fair_play_violations, basic, premium, mod, staff)
+              country: String, // API location of this player's country's profile
+              followers: Int, // the number of players tracking this player's activity
+              is_streamer: Boolean //if the member is a Chess.com streamer
+              )
+
+case class PlayerTournamentNode(id: String) // id of tournament
+case class PlayerTournament(finished: List[PlayerTournamentNode]) // list of tournaments
+// played by user
+
+case class Tournament(rounds: List[String]) // link of rounds of tournaments
+
+case class Round(groups: List[String]) // link of groups of rounds of tournaments
+
+case class Player(username: String) // player username
+case class GameNode(white: Player, //white player
+                    black: Player, //black player
+                    eco:Option[String] // opening
+                   )
+case class Game(games: List[GameNode], players: List[Player])
+
+object myJsonProtocol extends DefaultJsonProtocol{
+  implicit val jsonFormatterTitledPlayers: RootJsonFormat[TitledPlayers] = jsonFormat1(TitledPlayers.apply)
+  implicit val jsonFormatterProfile: RootJsonFormat[Profile] = jsonFormat6(Profile.apply)
+  implicit val jsonFormatterPlayerTournamentNode: RootJsonFormat[PlayerTournamentNode] = jsonFormat(PlayerTournamentNode, "@id")
+  implicit val jsonFormatterPlayerTournament: RootJsonFormat[PlayerTournament] = jsonFormat1(PlayerTournament.apply)
+  implicit val jsonFormatterTournament: RootJsonFormat[Tournament] = jsonFormat1(Tournament.apply)
+  implicit val jsonFormatterRounds: RootJsonFormat[Round] = jsonFormat1(Round.apply)
+  implicit val jsonFormatterPlayer: RootJsonFormat[Player] = jsonFormat1(Player.apply)
+  implicit val jsonFormatterGameNode: RootJsonFormat[GameNode] = jsonFormat3(GameNode.apply)
+  implicit val jsonFormatterGame: RootJsonFormat[Game] = jsonFormat2(Game.apply)
+}
 
 object Chess {
 
-  def main(args: Array[String]): Unit = {
+  def main(args: Array[String]): Unit ={
+
+    import myJsonProtocol._
 
     val spark = SparkSession
       .builder
-      .appName("Capítulo10")
+      .appName("Chess")
       .master("local[*]")
-      .config("spark.network.timeout", "10000s")
-      .config("spark.executor.heartbeatInterval", "5000s")
       .getOrCreate()
 
     spark.sparkContext.setLogLevel("ERROR")
 
-    var titledPlayersJson = Seq[Row]()
-    val titles = Seq("GM", "WGM", "IM", "WIM", "FM", "WFM", "NM", "WNM", "CM", "WCM")
+    // 1.- Get titled players
 
-    // agarrar 5 de cada uno -> 5*10 = 50 vértices cumplido
-    // 3 partidas de 1 torneo para cada jugador 3*50=150
-    // registrar jugadores que no están
+    val titles = List("GM", "WG", "IM", "WIM", "FM", "WFM", "CM", "WCM")
 
+    val players : List[List[String]]=
+      for {
+        title <- titles
+      } yield Try(requests.get("https://api.chess.com/pub/titled/" + title).text.parseJson.convertTo[TitledPlayers].players).toOption
+      .toList
+      .flatten
+      .sorted(Ordering[String].reverse)
+      .take(5)
 
-    titles.foreach(title => {
-      try{
-        titledPlayersJson = Row(title, requests.get("https://api.chess.com/pub/titled/" + title).text()) +: titledPlayersJson
-      }catch{
-        case _ : requests.TimeoutException => null
-        case _ : UnknownException => null
-        case _ : RequestFailedException => null
-        case _ : InvalidCertException => null
-      }
-    })
+    val titled_players : List[String] = players.flatten
 
-    import spark.sqlContext.implicits._
+//    println(titled_players)
 
-    var rdd = spark.sparkContext.parallelize(titledPlayersJson)
+    // 2.- Get players profile
 
-    val schema = StructType(Array(
-      StructField("title", StringType, nullable = false),
-      StructField("players", StringType, nullable = false)
-    ))
+    val profiles : List[Option[Profile]] =
+      for {
+        name <- titled_players
+      } yield Try(requests.get("https://api.chess.com/pub/player/" + name).text.parseJson.convertTo[Profile]).toOption
 
-    var titledPlayersJsonDf = spark.sqlContext.createDataFrame(rdd, schema)
+    var players_profile = profiles.flatten
 
-    titledPlayersJsonDf = titledPlayersJsonDf.select(struct($"title", $"players").alias("info_players"))
+//    println(players_profile)
 
-    titledPlayersJsonDf = titledPlayersJsonDf.withColumn("info_players",
-      struct(col("info_players.title"),
-        from_json(col("info_players.players"), StructType(Array(
-          StructField("players", ArrayType(StringType), nullable = false)
-        ))).alias("players")
-      )
-    )
+    // 3.- Get players tournaments
 
-    titledPlayersJsonDf = titledPlayersJsonDf.select(
-      col("info_players.title").alias("title"),
-      explode(col("info_players.players.players")).alias("players")
-    )
+    val tournaments_from_player : List[Option[List[PlayerTournamentNode]]] = for {
+      name <- titled_players
+    } yield Try(requests.get("https://api.chess.com/pub/player/" + name + "/tournaments").text.parseJson.convertTo[PlayerTournament].finished).toOption
 
-    val windowSpec = Window
-    .partitionBy("title")
-    .orderBy(desc("players"))
+    val players_tournaments : List[String]= tournaments_from_player
+      .flatten
+      .take(5)
+      .flatten
+      .map(t => t.id)
 
-    titledPlayersJsonDf = titledPlayersJsonDf.withColumn("row", row_number().over(windowSpec)).filter(col("row") <= 5).drop("row", "title")
+//    println(players_tournaments)
 
-    // -> Vertex
+    // 4.- Get tournaments and rounds
 
-    // Profile player
+    val tournaments : List[Option[List[String]]]= for {
+      url <- players_tournaments
+    } yield Try(requests.get(url).text.parseJson.convertTo[Tournament].rounds).toOption
 
-    def getProfilePlayerInfo(playerName: String) : String = {
-      try{
-        requests.get("https://api.chess.com/pub/player/" + playerName).text()
-      }catch{
-        case _ : requests.TimeoutException => null
-        case _ : UnknownException => null
-        case _ : RequestFailedException => null
-        case _ : InvalidCertException =>
-          null
-      }
-    }
-    val getProfilePlayerInfoUdf = udf(getProfilePlayerInfo(_:String) : String)
+    val rounds: List[String]= tournaments.flatten.map(l => l.head) // solamente la primera ronda del torneo
 
-    val profilePlayerSchema = new StructType(Array(
-      StructField("username", StringType, nullable = true),
-      StructField("title", StringType, nullable = true),
-      StructField("status", StringType, nullable = true),
-      StructField("name", StringType, nullable = true),
-      StructField("country", StringType, nullable = true),
-      StructField("joined", TimestampType, nullable = true),
-      StructField("last_online", TimestampType, nullable = true),
-      StructField("followers", LongType, nullable = true),
-      StructField("is_streamer", BooleanType, nullable = true),
-      StructField("verified", BooleanType, nullable = true),
-      StructField("twitch_url", BooleanType, nullable = true),
-      StructField("fide", LongType, nullable = true),
-    ))
+//    println(rounds)
 
-    titledPlayersJsonDf = titledPlayersJsonDf
-      .select(from_json(getProfilePlayerInfoUdf(col("players")), profilePlayerSchema)
-        .alias("profile_player"))
-      .na
-      .drop()
+    // 5.- Get rounds and groups
 
-    titledPlayersJsonDf = titledPlayersJsonDf.select("profile_player.*")
+    val rounds_tournaments : List[Option[List[String]]]= for {
+      url <- rounds
+    } yield Try(requests.get(url).text.parseJson.convertTo[Round].groups).toOption
 
-    // -> Edges
+    val groups: List[String]= rounds_tournaments.flatten.map(l => l.head) // solamente el primer grupo que sale
 
-    def getPlayerTournamentsInfo(playerName: String) : String = {
-      try{
-        requests.get("https://api.chess.com/pub/player/" + playerName + "/tournaments").text()
-      }catch{
-        case _ : requests.TimeoutException => null
-        case _ : UnknownException => null
-        case _ : RequestFailedException => null
-        case _ : InvalidCertException => null
-      }
+//    println(groups)
 
-    }
+    // 6.- Get matches
 
-    val getPlayerTournamentsInfoUdf = udf(getPlayerTournamentsInfo(_:String) : String)
+    val matches : List[Option[Game]] = for {
+      url <- groups
+    } yield Try(requests.get(url).text.parseJson.convertTo[Game]).toOption
 
-    val playerTournamentsSchema =
-      new StructType(Array(
-        StructField("finished", ArrayType(StringType), nullable = true)))
+//    println(matches)
 
-    var gamesDf = titledPlayersJsonDf
-      .select(from_json(getPlayerTournamentsInfoUdf(col("username")), playerTournamentsSchema).alias("player_tournaments"))
-      .na
-      .drop()
-      .select(element_at($"player_tournaments.finished", 1).alias("player_tournaments"))
-      .select(split(col("player_tournaments"), "/").alias("player_tournaments"))
-      .select(col("player_tournaments")(5).alias("player_tournaments"))
-      .select(regexp_replace(col("player_tournaments"), "\",\"@id\":\"https:", "").alias("player_tournaments"))
+    val player_matches : List[(String, String, Option[String])] =
+        matches
+          .flatten
+          .flatMap(g => g.games.take(3))
+          .map(n => (n.white.username, n.black.username, n.eco))
 
-    def getTournamentsInfo(tournament: String) : String = {
-      try{
-        if (tournament != null && tournament != ""){
-          return requests.get("https://api.chess.com/pub/tournament/" + tournament).text()
-        }
-        null
-      }catch{
-        case _ : RequestFailedException => null
-        case _ : requests.TimeoutException => null
-        case _ : UnknownException => null
-        case _ : InvalidCertException => null
-      }
+    println(player_matches)
 
-    }
+    // 7.- Fill list with player's profiles with players from matches info
 
-    val getTournamentsInfoUdf = udf(getTournamentsInfo(_:String) : String)
+    // Nota: Solo agregar jugadores que no estén en profile_players (Corregir)
 
-    val tournamentsSchema =
-      new StructType(Array(
-        StructField("rounds", ArrayType(StringType), nullable = true)
-      ))
+    val titled_players_from_matches : List[Option[Profile]] = for {
+      name <- matches
+                .flatten
+                .flatMap(g => g.players)
+                .map(p => p.username)
+    } yield Try(requests.get("https://api.chess.com/pub/player/" + name).text.parseJson.convertTo[Profile]).toOption
 
-    gamesDf = gamesDf
-      .withColumn("round_tournaments", from_json(getTournamentsInfoUdf(col("player_tournaments")), tournamentsSchema))
-      .withColumn("round_tournaments", col("round_tournaments.rounds")(0))
+    players_profile = titled_players_from_matches.flatten ++ players_profile
 
-//    gamesDf.show() // hasta aquí bien
+    println(players_profile) // 0:40
 
-    def getRoundTournamentsInfo(round_url: String) : String = {
-      if (round_url != null){
-        try{
-          return requests.get(round_url).text()
-        }catch {
-          case _ : RequestFailedException =>
-            return null
-          case _ : requests.TimeoutException =>
-            return null
-          case _ : UnknownException =>
-            return null
-          case _ : InvalidCertException =>
-            return null
-        }
-      }
-      null
-    }
+// -----------------------------------------
 
-    val getRoundTournamentsInfoUdf = udf(getRoundTournamentsInfo(_:String) : String)
+// UNFOLD IDEA =>
+//
+//    val it : Iterator[Response]= Iterator.unfold(Request("https://api.chess.com/pub/player/erik"))(
+//      respuesta : Response =>  Some((respuesta, ))
+//    )
 
-    val roundTournamentsSchema =
-      new StructType(Array(
-        StructField("groups", ArrayType(StringType), nullable = true)
-      ))
+/*   -> IDEA
 
-    gamesDf = gamesDf
-      .select(col("player_tournaments"), from_json(getRoundTournamentsInfoUdf(col("round_tournaments")), roundTournamentsSchema).alias("group_round_tournaments"))
-      .withColumn("group_round_tournaments", col("group_round_tournaments.groups")(0))
+    //endpoint del perfil del jugador x
+    val url_perfil = "https://api.chess.com/pub/player/" + name
+    requests.get(url_perfil)
 
-    def getGamesInfo(games_url: String) : String = {
-      if (games_url != null){
-        try{
-          return requests.get(games_url).text()
-        }catch {
-          case _ : RequestFailedException =>
-            return null
-          case _ : requests.TimeoutException =>
-            return null
-          case _ : UnknownException =>
-            return null
-          case _ : InvalidCertException =>
-            return null
-        }
-      }
-      null
-    }
+    //endpoint de los torneos del jugador x
+    val url_torneo_jugador = "https://api.chess.com/pub/player/" + name + "/tournaments"
+    requests.get(url_torneo_jugador)
 
-    val getGamesInfoUdf = udf(getGamesInfo(_:String) : String)
+    // endpoint de la info. del torneo x
+    val url_torneo = requests.get("https://api.chess.com/pub/tournament/50-blitz-429084"
+    // se obtiene del campo @id de la request de los torneos del jugador
 
-    val roundGamesSchema =
-      new StructType(Array(
-        StructField("games", ArrayType(StructType(Array(
-          StructField("end_time", TimestampType, nullable = true),
-          StructField("time_class", StringType, nullable = true),
-          StructField("white", StructType(Array(
-            StructField("rating", LongType, nullable = true),
-            StructField("username", StringType, nullable = true)
-          )), nullable = true),
-          StructField("black", StructType(Array(
-            StructField("rating", LongType, nullable = true),
-            StructField("username", StringType, nullable = true)
-          )), nullable = true),
-          StructField("eco", StringType, nullable = true)
-        ))), nullable = true)
-      ))
+    //endpoint de las rondas x
+    val url_ronda = "https://api.chess.com/pub/tournament/50-blitz-429084/4"
+    //se obtiene del campo "rounds" de la request de la info. del torneo
 
-    gamesDf = gamesDf
-      .select(col("player_tournaments"), from_json(getGamesInfoUdf(col("group_round_tournaments")),
-        roundGamesSchema).alias("games_tournaments"))
-      .select(col("player_tournaments"), explode($"games_tournaments.games").alias("games_tournaments"))
-      .select(col("player_tournaments"), col("games_tournaments.*"))
-      .withColumn("white", col("white.username"))
-      .withColumn("black", col("black.username"))
-
-    import org.apache.spark.sql.functions._
-
-    titledPlayersJsonDf = titledPlayersJsonDf // para obtener códigos de países en los vértices
-      .withColumn("country", substring_index(col("country"), "/", -1))
-    gamesDf = gamesDf // para obtener aperturas
-      .withColumn("eco", substring_index(col("eco"), "/", -1))// construcción del grafo
-
-    val playersVertices = titledPlayersJsonDf
-      .withColumnRenamed("username", "id").distinct()
-
-    val gamesEdges = gamesDf
-      .withColumnRenamed("white", "src")
-      .withColumnRenamed("black", "dst")
-
-    import org.graphframes.GraphFrame
-    val chessGraph = GraphFrame(playersVertices, gamesEdges)
-    chessGraph.cache()
-
-    // basic queries
-
-    // 1º matches donde se jugó la defensa siciliana
-
-    chessGraph
-      .edges
-      .where(col("eco").contains("Sicilian-Defense"))
-      .show(5)
-
-    // 2º jugador con mayor número de seguidores de Chess.com según los matches registrados
-
-    chessGraph
-      .vertices
-      .groupBy($"id")
-      .agg(max("followers").alias("max_followers"))
-      .select($"id", $"max_followers")
-      .orderBy(desc("max_followers"))
-      .show(1)
-
-    // motif finding
-
-    val motif = chessGraph.find("(b)-[e]->(n)")
-
-//     3º matches donde alguno de los dos jugadores es sudafricano
-
-    motif
-      .filter("b.country == \"RU\" OR n.country == \"ZA\"")
-      .show(5)
-
-    // 4º matches donde el jugador de blancas se registró antes del 2022-09-12 00:00
-
-//    motif
-//      .filter(col("b.joined") < "2022-09-10 12:35")
-//      .show(5)
-
-//    val inDeg = chessGraph.inDegrees
-//    inDeg.orderBy(desc("inDegree")).show(5, truncate = false)
+    //endpoint de las partidas x
+    val url_partida = "https://api.chess.com/pub/tournament/50-blitz-429084/4/1"
+    requests.get(url_partida)
+    // se obtiene del campo "groups" de la request de las rondas*/
 
   }
 

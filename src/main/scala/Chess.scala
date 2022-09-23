@@ -1,9 +1,11 @@
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.functions.col
+import org.apache.spark.sql.functions._
 
 import scala.util.Try
 import spray.json._
 import org.graphframes.GraphFrame
+
+import java.sql.Timestamp
 
 case class TitledPlayers(players: List[String])
 
@@ -13,7 +15,8 @@ case class Profile(player_id: Long, // the non-changing Chess.com ID of this pla
               status: String, // account status: closed, closed:fair_play_violations, basic, premium, mod, staff)
               country: String, // API location of this player's country's profile
               followers: Int, // the number of players tracking this player's activity
-              is_streamer: Boolean //if the member is a Chess.com streamer
+              is_streamer: Boolean, //if the member is a Chess.com streamer
+              joined: Timestamp// timestamp of registration on Chess.com
               ) {
   override def equals(obj: Any): Boolean = {
     obj match{
@@ -40,8 +43,17 @@ case class GameNode(white: Player, //white player
 case class Game(games: List[GameNode], players: List[Player])
 
 object myJsonProtocol extends DefaultJsonProtocol{
+
+  implicit object TimestampJsonFormat extends JsonFormat[Timestamp] {
+    def write(x: Timestamp): JsNumber = JsNumber(x.getTime)
+    def read(value: JsValue): Timestamp = value match {
+      case JsNumber(x) => new Timestamp(x.longValue * 1000)
+      case x => deserializationError("Expected Timestamp as JsNumber, but got " + x)
+    }
+  }
+
   implicit val jsonFormatterTitledPlayers: RootJsonFormat[TitledPlayers] = jsonFormat1(TitledPlayers.apply)
-  implicit val jsonFormatterProfile: RootJsonFormat[Profile] = jsonFormat7(Profile.apply)
+  implicit val jsonFormatterProfile: RootJsonFormat[Profile] = jsonFormat8(Profile.apply)
   implicit val jsonFormatterPlayerTournamentNode: RootJsonFormat[PlayerTournamentNode] = jsonFormat(PlayerTournamentNode, "@id")
   implicit val jsonFormatterPlayerTournament: RootJsonFormat[PlayerTournament] = jsonFormat1(PlayerTournament.apply)
   implicit val jsonFormatterTournament: RootJsonFormat[Tournament] = jsonFormat1(Tournament.apply)
@@ -73,10 +85,10 @@ object Chess {
      titles.flatMap { title =>
        Try(requests.get("https://api.chess.com/pub/titled/" + title).text.parseJson.convertTo[TitledPlayers].players)
          .fold(_ => List(), identity)
-         .take(5)
+         .take(1)
      }
 
-    println(titled_players) // 40
+    println(titled_players)
     println(titled_players.size)
 
     // 2.- Get profiles
@@ -88,49 +100,49 @@ object Chess {
       }
 
     println(profiles)
-    println(profiles.size) // 40 vértices
+    println(profiles.size)
 
     // 3.- Get tournaments
 
     val tournaments : List[String] = titled_players.flatMap {name =>
       Try(requests.get("https://api.chess.com/pub/player/" + name + "/tournaments").text.parseJson.convertTo[PlayerTournament].finished)
-        .fold(_ => List(), l => l.take(5))
+        .fold(_ => List(), l => l.take(2))
         .map(_.id)
     }
 
     println(tournaments)
-    println(tournaments.size) // 40 * 5 = 200 | 140
+    println(tournaments.size)
 
     // 4.- Get rounds
 
     val rounds : List[String] = tournaments flatMap { url =>
       Try(requests.get(url).text.parseJson.convertTo[Tournament].rounds)
-        .fold(_ => List(), l => List(l.head)) // solamente la primera ronda del torneo
+        .fold(_ => List(), l => List(l.head))
     }
 
     println(rounds)
-    println(rounds.size) // 138
+    println(rounds.size)
 
     // 5.- Get groups
 
     val groups : List[String] = rounds flatMap { url =>
       Try(requests.get(url).text.parseJson.convertTo[Round].groups)
-        .fold(_ => List(), l => List(l.head)) // solamente el primer grupo que sale
+        .fold(_ => List(), l => List(l.head))
     }
 
     println(groups)
-    println(groups.size) // 138
+    println(groups.size)
 
     // 6.- Get matches
 
     val matches : List[(String, String, Option[String])] = groups flatMap {url =>
       Try(requests.get(url).text.parseJson.convertTo[Game].games)
-      .fold(_ => List(), l=>l.take(3))
+      .fold(_ => List(), l=>l.take(2))
       .map(g => (g.white.username, g.black.username, g.eco))
     }
 
     println(matches)
-    println(matches.size) // 373 aristas
+    println(matches.size)
 
     // 7.- Fill profiles list with players from matches info
 
@@ -145,7 +157,7 @@ object Chess {
       .flatMap(t => t._1 ++ t._2) ++ profiles
 
     println(profiles)
-    println(profiles.size) // 786 nodos
+    println(profiles.size)
 
     // 8.- Generate graph
 
@@ -155,58 +167,63 @@ object Chess {
       "status",
       "country",
       "followers",
-      "is_streamer")
+      "is_streamer",
+      "joined")
 
     val edges = spark.sqlContext.createDataFrame(matches).toDF("white", "black", "eco")
 
     val playersVertices = vertices
-      .withColumnRenamed("username", "id").distinct()
+      .withColumnRenamed("username", "id")
+      .withColumn("country", substring_index(col("country"), "/", -1))
+
+    playersVertices.show(50)
 
     val gamesEdges = edges
       .withColumnRenamed("white", "src")
       .withColumnRenamed("black", "dst")
+      .withColumn("src", lower(col("src")))
+      .withColumn("dst", lower(col("dst")))
 
     val chessGraph = GraphFrame(playersVertices, gamesEdges)
     chessGraph.cache()
 
-    // 1.- matches donde se jugó la defensa siciliana
+    // basic queries
+
+    // 1º matches donde se jugó la defensa siciliana
 
     chessGraph
       .edges
       .where(col("eco").contains("Sicilian-Defense"))
       .show(5)
 
+    // 2º jugador con mayor número de seguidores de Chess.com según los matches registrados
 
-    // -----------------------------------------
+    chessGraph
+      .vertices
+      .groupBy(col("id"))
+      .agg(max("followers").alias("max_followers"))
+      .select(col("id"), col("max_followers"))
+      .orderBy(desc("max_followers"))
+      .show(1)
 
-// UNFOLD IDEA =>
-//
-//    val it : Iterator[Response]= Iterator.unfold(Request("https://api.chess.com/pub/player/erik"))(
-//      respuesta : Response =>  Some((respuesta, ))
-//    )
+    // motif finding (búsquedas)
 
-/*   -> IDEA
+    val motif = chessGraph.find("(b)-[e]->(n)")
 
-    //endpoint del perfil del jugador x
-    val url_perfil = "https://api.chess.com/pub/player/" + name
-    requests.get(url_perfil)
+    // 3º matches donde alguno de los dos jugadores es americano
 
-    //endpoint de los torneos del jugador x
-    val url_torneo_jugador = "https://api.chess.com/pub/player/" + name + "/tournaments"
-    requests.get(url_torneo_jugador)
+    motif
+      .filter("b.country == \"US\" OR n.country == \"US\"")
+      .show()
 
-    // endpoint de la info. del torneo x
-    val url_torneo = requests.get("https://api.chess.com/pub/tournament/50-blitz-429084"
-    // se obtiene del campo @id de la request de los torneos del jugador
+    // 4º matches donde el jugador de blancas se registró antes del 2015-09-12 00:00
 
-    //endpoint de las rondas x
-    val url_ronda = "https://api.chess.com/pub/tournament/50-blitz-429084/4"
-    //se obtiene del campo "rounds" de la request de la info. del torneo
+    motif
+      .filter(col("b.joined") < "2015-09-12 00:00")
+      .show()
 
-    //endpoint de las partidas x
-    val url_partida = "https://api.chess.com/pub/tournament/50-blitz-429084/4/1"
-    requests.get(url_partida)
-    // se obtiene del campo "groups" de la request de las rondas*/
+
+
 
   }
 

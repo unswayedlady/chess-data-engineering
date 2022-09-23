@@ -45,7 +45,18 @@ object Pruebas {
     )).toDF("src", "dst", "relationship")
     // Create a GraphFrame
     val g = GraphFrame(v, e)
-    g.vertices.show()
+
+    g.vertices.printSchema()
+    g.edges.printSchema()
+
+    val motif = g.find("(a)-[ab]->(b)")
+
+    g.edges.show()
+    motif.show()
+
+    println(motif.count())
+    println(g.edges.count())
+
 
   }
 

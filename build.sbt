@@ -16,7 +16,7 @@ libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-sql" % "3.2.0",
 //  "org.apache.spark" %% "spark-hive" % "3.3.0",
   "com.lihaoyi" %% "requests" % "0.7.1",
-  "graphframes" % "graphframes" % "0.8.1-spark3.0-s_2.12",
+//  "graphframes" % "graphframes" % "0.8.1-spark3.0-s_2.12",
   "org.apache.spark" %% "spark-graphx" % "3.2.0",
   "io.spray" %%  "spray-json" % "1.3.6"
 //  "com.typesafe.akka" %% "akka-stream" % AkkaVersion,

@@ -1,4 +1,4 @@
-import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.{SparkSession, functions}
 import org.apache.spark.sql.functions._
 
 import scala.util.Try
@@ -10,7 +10,7 @@ import java.sql.Timestamp
 case class TitledPlayers(players: List[String])
 
 case class Profile(player_id: Long, // the non-changing Chess.com ID of this player
-                    username: String, // the username of this player
+              username: String, // the username of this player
               title: Option[String], // (optional) abbreviation of chess title, if any
               status: String, // account status: closed, closed:fair_play_violations, basic, premium, mod, staff)
               country: String, // API location of this player's country's profile
@@ -221,6 +221,44 @@ object Chess {
     motif
       .filter(col("b.joined") < "2015-09-12 00:00")
       .show()
+
+    // graph algorithms
+
+    // 5º connected components
+    // we get the max number of matches a player has played
+
+    spark.sparkContext.setCheckpointDir("src\\checkpoints")
+
+    val result = chessGraph
+      .connectedComponents
+      .run()
+
+    result
+      .groupBy("component")
+      .count()
+      .show()
+
+    // 6º breadth first search
+
+    // matches where magnus played white and hikaru black
+
+    chessGraph
+      .bfs
+      .fromExpr("id = 'magnuscarlsen'")
+      .toExpr("id = 'hikaru'")
+      .run()
+      .show()
+
+    // 7º in degrees and out degrees
+    // used to get player with max white plays (indegree, as src is for white)
+    // and black plays  (outdegree, as dst is for black)
+
+    val maxWhitePlays = chessGraph.inDegrees
+    maxWhitePlays.orderBy(desc("inDegree")).show(1)
+
+    // in Scala
+    val maxBlackPlays = chessGraph.outDegrees
+    maxBlackPlays.orderBy(desc("outDegree")).show(1)
 
 
 

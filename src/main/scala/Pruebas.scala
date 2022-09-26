@@ -1,5 +1,6 @@
 import org.apache.spark
-import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.{SparkSession, functions}
+import org.apache.spark.sql.functions.{col, desc, expr, first, max}
 import org.graphframes.GraphFrame
 
 object Pruebas {
@@ -23,39 +24,65 @@ object Pruebas {
     //    type A and update an internal state of type S.
 
     // Vertex DataFrame
-    val v = spark.sqlContext.createDataFrame(List(
-      ("a", "Alice", 34),
-      ("b", "Bob", 36),
-      ("c", "Charlie", 30),
-      ("d", "David", 29),
-      ("e", "Esther", 32),
-      ("f", "Fanny", 36),
-      ("g", "Gabby", 60)
-    )).toDF("id", "name", "age")
-    // Edge DataFrame
-    val e = spark.sqlContext.createDataFrame(List(
-      ("a", "b", "friend"),
-      ("b", "c", "follow"),
-      ("c", "b", "follow"),
-      ("f", "c", "follow"),
-      ("e", "f", "follow"),
-      ("e", "d", "friend"),
-      ("d", "a", "friend"),
-      ("a", "e", "friend")
-    )).toDF("src", "dst", "relationship")
-    // Create a GraphFrame
-    val g = GraphFrame(v, e)
+//    val v = spark.sqlContext.createDataFrame(List(
+//      ("a", "Alice", 34),
+//      ("b", "Bob", 36),
+//      ("c", "Charlie", 30),
+//      ("d", "David", 29),
+//      ("e", "Esther", 32),
+//      ("f", "Fanny", 36),
+//      ("g", "Gabby", 60)
+//    )).toDF("id", "name", "age")
+//    // Edge DataFrame
+//    val e = spark.sqlContext.createDataFrame(List(
+//      ("a", "b", "friend"),
+//      ("b", "c", "follow"),
+//      ("c", "b", "follow"),
+//      ("f", "c", "follow"),
+//      ("e", "f", "follow"),
+//      ("e", "d", "friend"),
+//      ("d", "a", "friend"),
+//      ("a", "e", "friend")
+//    )).toDF("src", "dst", "relationship")
+//    // Create a GraphFrame
+//    val g = GraphFrame(v, e)
+//
+//    g.vertices.printSchema()
+//    g.edges.printSchema()
+//
+//    val motif = g.find("(a)-[ab]->(b)")
+//
+//    g.edges.show()
+//    motif.show()
+//
+//    println(motif.count())
+//
+//    println(g.edges.count())
 
-    g.vertices.printSchema()
-    g.edges.printSchema()
+    import org.graphframes.{examples,GraphFrame}
+    val g: GraphFrame = examples.Graphs.friends  // get example graph
 
-    val motif = g.find("(a)-[ab]->(b)")
+    // Search from "Esther" for users of age < 32.
+    val paths = g.bfs.fromExpr("name = 'Esther'").toExpr("age < 32").run()
+    paths.show()
 
-    g.edges.show()
-    motif.show()
+    // Specify edge filters or max path lengths.
+    { g.bfs.fromExpr("name = 'Esther'").toExpr("age < 32")
+      .edgeFilter("relationship != 'friend'")
+      .maxPathLength(3).run() }
 
-    println(motif.count())
-    println(g.edges.count())
+    spark.sparkContext.setCheckpointDir("src\\checkpoints2")
+
+    val result = g.connectedComponents.run() // doesn't work on Spark 1.4
+    result
+//      .groupBy("component")
+//      .count()
+      .show()
+
+    // in Scala
+    val inDeg = g.inDegrees
+    inDeg.orderBy(desc("inDegree")).show(5, truncate = false)
+
 
 
   }

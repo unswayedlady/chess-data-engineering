@@ -187,16 +187,16 @@ object Chess {
     val chessGraph = GraphFrame(playersVertices, gamesEdges)
     chessGraph.cache()
 
-    // basic queries
+    // Basic queries
 
-    // 1º matches donde se jugó la defensa siciliana
+    // 1º Matches where sicilian was played
 
     chessGraph
       .edges
       .where(col("eco").contains("Sicilian-Defense"))
       .show(5)
 
-    // 2º jugador con mayor número de seguidores de Chess.com según los matches registrados
+    // 2º Player that got max number of followers in Chess.com
 
     chessGraph
       .vertices
@@ -206,31 +206,32 @@ object Chess {
       .orderBy(desc("max_followers"))
       .show(1)
 
-    // motif finding (búsquedas)
+    // Motif finding
 
     val motif = chessGraph.find("(b)-[e]->(n)")
 
-    // 3º matches donde alguno de los dos jugadores es americano
+    // 3º Matches where some player was american
 
     motif
       .filter("b.country == \"US\" OR n.country == \"US\"")
       .show()
 
-    // 4º matches donde el jugador de blancas se registró antes del 2015-09-12 00:00
+    // 4º Matches where black's player registered before 2015-09-12 00:00
 
     motif
       .filter(col("b.joined") < "2015-09-12 00:00")
       .show()
 
-    // graph algorithms
+    // Graph algorithms
 
-    // 5º connected components
-    // we get the max number of matches a player has played
+    // 5º Strongly connected components
+    // Get the max number of sub-communities of players
 
     spark.sparkContext.setCheckpointDir("src\\checkpoints")
 
     val result = chessGraph
-      .connectedComponents
+      .stronglyConnectedComponents
+      .maxIter(10)
       .run()
 
     result
@@ -238,28 +239,42 @@ object Chess {
       .count()
       .show()
 
-    // 6º breadth first search
+    // 6º Breadth first search
 
-    // matches where magnus played white and hikaru black
+    // Get possible paths (depth 3) from node with status staff to
+    // another one that has +1000 followers
 
     chessGraph
       .bfs
-      .fromExpr("id = 'magnuscarlsen'")
-      .toExpr("id = 'hikaru'")
+      .fromExpr("status = 'staff'")
+      .toExpr("followers > 1000")
+      .maxPathLength(3)
       .run()
       .show()
 
-    // 7º in degrees and out degrees
-    // used to get player with max white plays (indegree, as src is for white)
-    // and black plays  (outdegree, as dst is for black)
+    // 7º In degrees and out degrees
+
+    // Get player with max white plays (indegree, as src is for white)
+    // and black plays (outdegree, as dst is for black)
 
     val maxWhitePlays = chessGraph.inDegrees
     maxWhitePlays.orderBy(desc("inDegree")).show(1)
 
-    // in Scala
     val maxBlackPlays = chessGraph.outDegrees
     maxBlackPlays.orderBy(desc("outDegree")).show(1)
 
+    // 8º PageRank
+
+    //Identify important players based on played matches.
+
+    chessGraph
+      .pageRank
+      .resetProbability(0.15)
+      .tol(0.01)
+      .run()
+      .vertices
+      .orderBy(desc("pagerank"))
+      .show()
 
 
 

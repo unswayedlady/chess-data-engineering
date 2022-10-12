@@ -1,5 +1,4 @@
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.functions.{col, expr, lower, substring_index}
 import spray.json._
 
 import java.io.FileWriter
@@ -50,7 +49,7 @@ object Descarga {
     implicit object TimestampJsonFormat extends JsonFormat[Timestamp] {
       def write(x: Timestamp): JsNumber = JsNumber(x.getTime)
       def read(value: JsValue): Timestamp = value match {
-        case JsNumber(x) => new Timestamp(x.longValue * 1000)
+        case JsNumber(x) => new Timestamp(x.longValue)
         case x => deserializationError("Expected Timestamp as JsNumber, but got " + x)
       }
     }
@@ -81,7 +80,7 @@ object Descarga {
 
     spark.sparkContext.setLogLevel("ERROR")
 
-    // 1.- Get players id
+    // 1.- Get players id method
 
     def getPlayersId(title: String): Iterator[String] = {
       requests
@@ -93,7 +92,7 @@ object Descarga {
         .iterator
     }
 
-    // 2.- Get players tournaments id
+    // 2.- Get players tournaments id method
 
     def getPlayerTournamentsId(playerId: String): Iterator[String] = {
       requests
@@ -106,7 +105,7 @@ object Descarga {
         .iterator
     }
 
-    // 3.- Get rounds id
+    // 3.- Get rounds id method
 
     def getRoundsId(tournamentId: String) : Iterator[String] = {
       requests
@@ -118,7 +117,7 @@ object Descarga {
         .iterator
     }
 
-    // 4.- Get groups id
+    // 4.- Get groups id method
 
     def getGroupsId(roundId: String) : Iterator[String] = {
       requests
@@ -130,7 +129,7 @@ object Descarga {
         .iterator
     }
 
-    // 5.- Get match
+    // 5.- Get match method
 
     def getMatch(groupId: String) : Iterator[GameNode] = {
       requests
@@ -151,12 +150,22 @@ object Descarga {
       .flatMap(getRoundsId)
       .flatMap(getGroupsId)
       .flatMap(getMatch)
+
+    // Store matches
+
+    val matchesFile =
+      new FileWriter("matches.json")
+
+    matches
       .take(100)
-      .toList
+      .foreach(g => matchesFile.write(g.toJson.toString()+"\n"))
 
-    // Get profiles (Vertices)
+    // Get + store profiles
 
-    val profiles = matches
+    val profilesFile = new FileWriter("profiles.json") ;
+
+    matches
+      .take(100)
       .flatMap(
         m =>
           List(
@@ -172,37 +181,7 @@ object Descarga {
               .parseJson
               .convertTo[Profile])
       )
-
-   // Save matches json
-
-   spark
-     .sqlContext
-     .createDataFrame(matches)
-     .toDF("white", "black", "eco", "time_class")
-     .withColumn("white", expr("white.username"))
-     .withColumn("black", expr("black.username"))
-     .withColumnRenamed("white", "src")
-     .withColumnRenamed("black", "dst")
-     .withColumn("src", lower(col("src")))
-     .withColumn("dst", lower(col("dst")))
-     .coalesce(1)
-     .write
-     .mode("Overwrite")
-     .json("descarga1")
-
-    // Save profiles json
-
-    spark
-      .sqlContext
-      .createDataFrame(profiles)
-      .toDF("player_id", "username", "title", "status",
-        "country", "followers", "is_streamer", "joined")
-      .withColumnRenamed("username", "id")
-      .withColumn("country", substring_index(col("country"), "/", -1))
-      .coalesce(1)
-      .write
-      .mode("Overwrite")
-      .json("descarga2")
+      .foreach(p => profilesFile.write(p.toJson.toString()+"\n"))
 
 
   }

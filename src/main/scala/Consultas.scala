@@ -1,5 +1,6 @@
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.functions.{col, desc, max}
+import org.apache.spark.sql.functions._
+import org.apache.spark.sql.types._
 import org.graphframes.GraphFrame
 
 object Consultas {
@@ -16,8 +17,46 @@ object Consultas {
 
     spark.sparkContext.setLogLevel("ERROR")
 
-    val e = spark.read.json("descarga1/part-00000-93c74744-62e4-4f4c-b332-a04cec80d7fa-c000.json")
-    val v = spark.read.json("descarga2/part-00000-a1ec7dd9-80e0-41ac-b6c8-e0288502cece-c000.json")
+    val schemaMatches = StructType(Array(
+      StructField("white", StructType(Array(
+        StructField("username", StringType, nullable = false)
+      ))),
+      StructField("black", StructType(Array(
+        StructField("username", StringType, nullable = false)
+      ))),
+      StructField("eco", StringType, nullable = true),
+      StructField("time_class", StringType, nullable = false)
+    ))
+
+    val e = spark
+      .read
+      .schema(schemaMatches)
+      .json("matches.json")
+      .withColumn("white", expr("white.username"))
+      .withColumn("black", expr("black.username"))
+      .withColumnRenamed("white", "src")
+      .withColumnRenamed("black", "dst")
+      .withColumn("src", lower(col("src")))
+      .withColumn("dst", lower(col("dst")))
+
+
+    val schemaProfiles = StructType(Array(
+      StructField("player_id", LongType, nullable = false),
+      StructField("username", StringType, nullable = false),
+      StructField("title", StringType, nullable = true),
+      StructField("status", StringType, nullable = false),
+      StructField("country", StringType, nullable = false),
+      StructField("followers", LongType, nullable = false),
+      StructField("is_streamer", BooleanType, nullable = false),
+      StructField("joined", TimestampType, nullable = false)
+    ))
+
+    val v = spark
+      .read
+      .schema(schemaProfiles)
+      .json("profiles.json")
+      .withColumnRenamed("username", "id")
+      .withColumn("country", substring_index(col("country"), "/", -1))
 
     val g = GraphFrame(v, e)
 

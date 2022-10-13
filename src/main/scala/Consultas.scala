@@ -38,6 +38,7 @@ object Consultas {
       .withColumnRenamed("black", "dst")
       .withColumn("src", lower(col("src")))
       .withColumn("dst", lower(col("dst")))
+      .withColumn("eco", substring_index(col("eco"), "/", -1))
 
 
     val schemaProfiles = StructType(Array(
@@ -60,7 +61,10 @@ object Consultas {
 
     val g = GraphFrame(v, e)
 
+    println("1) Vertices")
     g.vertices.show(110)
+
+    println("2) Edges")
     g.edges.show(55)
 
     // Basic queries
@@ -84,14 +88,13 @@ object Consultas {
 
     // Motif finding
 
-    val motif = g
-                  .find("(b)-[e]->(n)")
-                  .filter("b.id != n.id")
+    val motif = g.find("(b)-[e]->(n)")
 
-    println("3º Matches where white player is american or black's south-african")
+    println("3º Matches where white player is American or black's Spanish")
 
     motif
-      .filter("b.country == \"US\" OR n.country == \"ZA\"")
+      .filter("b.country == \"US\" OR n.country == \"ES\"")
+      .select("b.id", "b.country", "n.id", "n.country")
       .show()
 
     println("4º Matches where white's player registered before 2015-09-12 00:00")
@@ -104,7 +107,7 @@ object Consultas {
 
     // Graph algorithms
 
-    println("5º Get possible paths (depth 4) from player with premium membership to another one that has +100 followers")
+    println("5º Get possible paths (depth 3) from player with premium membership to another one that has +100 followers")
 
     g
       .bfs

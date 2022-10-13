@@ -141,47 +141,37 @@ object Descarga {
         .iterator
     }
 
-    // Get matches (Edges)
+    // Store matches (edges) + profiles (vertices) in a file
 
-    val matches = List("GM", "WGM", "IM", "WIM", "FM", "WFM", "CM", "WCM")
+    var numberRequests = 0
+    val matchesFile = new FileWriter("matches.json")
+    val profilesFile = new FileWriter("profiles.json")
+
+    List("GM", "WGM", "IM", "WIM", "FM", "WFM", "CM", "WCM")
       .iterator
       .flatMap(getPlayersId)
       .flatMap(getPlayerTournamentsId)
       .flatMap(getRoundsId)
       .flatMap(getGroupsId)
       .flatMap(getMatch)
-
-    // Store matches
-
-    val matchesFile =
-      new FileWriter("matches.json")
-
-    matches
-      .take(100)
-      .foreach(g => matchesFile.write(g.toJson.toString()+"\n"))
-
-    // Get + store profiles
-
-    val profilesFile = new FileWriter("profiles.json") ;
-
-    matches
-      .take(100)
-      .flatMap(
-        m =>
-          List(
-            requests
-              .get("https://api.chess.com/pub/player/" + m.white.username)
-              .text
-              .parseJson
-              .convertTo[Profile] ,
-
-            requests
-              .get("https://api.chess.com/pub/player/" + m.black.username)
-              .text
-              .parseJson
-              .convertTo[Profile])
-      )
-      .foreach(p => profilesFile.write(p.toJson.toString()+"\n"))
+      .take(500)
+      .foreach(g => {
+        numberRequests+=1
+        if (numberRequests % 100 == 0){
+          println("We had processed so far " +  numberRequests +  " requests...")
+        }
+        matchesFile.write(g.toJson.toString()+"\n")// write edge
+        profilesFile.write(requests
+          .get("https://api.chess.com/pub/player/" + g.white.username)
+          .text
+          .parseJson
+          .convertTo[Profile].toJson.toString()+"\n")// vertex 1
+        profilesFile.write(requests
+          .get("https://api.chess.com/pub/player/" + g.black.username)
+          .text
+          .parseJson
+          .convertTo[Profile].toJson.toString()+"\n")// vertex 2
+      })
 
 
   }

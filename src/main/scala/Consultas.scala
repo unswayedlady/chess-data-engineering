@@ -1,6 +1,6 @@
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types._
+import org.apache.spark.sql.types.{StructField, _}
 import org.graphframes.GraphFrame
 
 object Consultas {
@@ -19,27 +19,29 @@ object Consultas {
 
     val schemaMatches = StructType(Array(
       StructField("white", StructType(Array(
-        StructField("username", StringType, nullable = false)
+        StructField("username", StringType, nullable = false),
+        StructField("result", StringType, nullable = false)
       ))),
       StructField("black", StructType(Array(
-        StructField("username", StringType, nullable = false)
+        StructField("username", StringType, nullable = false),
+        StructField("result", StringType, nullable = false)
       ))),
       StructField("eco", StringType, nullable = true),
-      StructField("time_class", StringType, nullable = false)
+      StructField("pgn", StringType, nullable = false)
     ))
 
     val e = spark
       .read
       .schema(schemaMatches)
       .json("matches.json")
-      .withColumn("white", expr("white.username"))
-      .withColumn("black", expr("black.username"))
-      .withColumnRenamed("white", "src")
-      .withColumnRenamed("black", "dst")
-      .withColumn("src", lower(col("src")))
-      .withColumn("dst", lower(col("dst")))
-      .withColumn("eco", substring_index(col("eco"), "/", -1))
-
+      .withColumn("src", lower(expr("white.username")))// white username
+      .withColumn("w_result", expr("white.result"))// white result
+      .withColumn("dst", lower(expr("black.username"))) // black username
+      .withColumn("b_result", expr("black.result")) // black result
+      .withColumn("final_result", regexp_extract(col("pgn"), "1\\. .*(1-0|0-1|1\\/2-1\\/2)", 1)) // final result
+      .withColumn("eco", substring_index(col("eco"), "/", -1)) // el opening
+      .withColumn("checkmating_piece", regexp_extract(col("pgn"), "(([1-9][0-9]*)\\. )([RQKBN]*[a-h][1-8])(#)", 0))
+      .drop("white", "black")
 
     val schemaProfiles = StructType(Array(
       StructField("player_id", LongType, nullable = false),
@@ -55,17 +57,24 @@ object Consultas {
     val v = spark
       .read
       .schema(schemaProfiles)
-      .json("profiles.json")
+      .json("players.json")
       .withColumnRenamed("username", "id")
       .withColumn("country", substring_index(col("country"), "/", -1))
 
     val g = GraphFrame(v, e)
 
     println("1) Vertices")
-    g.vertices.show(110)
+    g.vertices.show()
 
     println("2) Edges")
-    g.edges.show(55)
+    g.edges.show()
+    g.edges.printSchema()
+
+    /*g
+        .edges
+        .select("pgn")
+        .collect()
+        .foreach(println)*/
 
     // Basic queries
 
@@ -88,16 +97,19 @@ object Consultas {
 
     // Motif finding
 
-    val motif = g.find("(b)-[e]->(n)")
+    val motif = g
+      .find("(b)-[e]->(n)")
 
-    println("3º Matches where white player is American or black's Spanish")
+
+    println("3º Matches where White's player is American or Black's is Spanish")
 
     motif
       .filter("b.country == \"US\" OR n.country == \"ES\"")
       .select("b.id", "b.country", "n.id", "n.country")
+      .filter("b.id != n.id")
       .show()
 
-    println("4º Matches where white's player registered before 2015-09-12 00:00")
+    println("4º Matches where White's player registered before 2015-09-12 00:00")
 
     motif
       .filter(col("b.joined") < "2015-09-12 00:00")
@@ -105,20 +117,9 @@ object Consultas {
       .distinct()
       .show()
 
-    // Graph algorithms
+    // Graph algorithm
 
-    println("5º Get possible paths (depth 3) from player with premium membership to another one that has +100 followers")
-
-    g
-      .bfs
-      .fromExpr("status = 'premium'")
-      .toExpr("followers > 100")
-      .maxPathLength(3)
-      .run()
-      .filter("from.id != to.id")
-      .show()
-
-    println("6º Get player with max white plays (indegree, as src is for white) and black plays (outdegree, as dst is for black)")
+    println("5º Get player with max white plays (indegree, as src is for White) and black plays (outdegree, as dst stands for Black)")
 
     val maxWhitePlays = g.inDegrees
     maxWhitePlays.orderBy(desc("inDegree")).show(1)
@@ -126,7 +127,7 @@ object Consultas {
     val maxBlackPlays = g.outDegrees
     maxBlackPlays.orderBy(desc("outDegree")).show(1)
 
-    println("7º Identify important players based on played matches")
+    println("6º Identify important players based on played matches")
 
     g
       .pageRank
@@ -136,6 +137,23 @@ object Consultas {
       .vertices
       .distinct()
       .orderBy(desc("pagerank"))
+      .show()
+
+    println("7º Get percentage of different matches' result")
+
+    val results =
+    g
+      .edges
+      .groupBy(col("eco"), col("src"),
+        col("dst"),col("w_result"),
+        col("b_result"), col("result"))
+      .count()
+      .groupBy("w_result", "b_result")
+      .count()
+      .orderBy(desc("count"))
+
+    results
+      .withColumn("percentage", col("count") / lit(results.select(sum("count")).collect()(0).getLong(0)))
       .show()
 
 

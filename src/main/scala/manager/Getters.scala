@@ -83,19 +83,19 @@ object Getters {
     Some(((), n + 1))
   }
 
-  def getPlayers(m: Match, s: scala.collection.mutable.Set[String]): Option[((Match, Option[List[Profile]]), scala.collection.mutable.Set[String])] = {
+  def getPlayers(m: Match, s: Set[String]): Option[((Match, Option[List[Profile]]), Set[String])] = {
     itCounter.next()
-    val l : Option[List[Profile]] = List(m.white.username, m.black.username).foldLeft[Option[List[Profile]]](Some(List())){
-      case (Some(l), name) if !s.contains(name) => getPlayer(name) match{
+    val (l, s2) : (Option[List[Profile]], Set[String]) = List(m.white.username, m.black.username)
+      .foldLeft[(Option[List[Profile]], Set[String])]((Some(List()), s)){
+      case ((Some(l), s), name) if !s.contains(name) => getPlayer(name) match{
         case Some(p) =>
-          s += name
-          Some(p :: l)
-        case None => None
+          (Some(p :: l), s+name)
+        case None => (None, s)
       }
-      case (Some(l), _) => Some(l)
-      case (None, _) => None
+      case ((Some(l), s), _) => (Some(l), s)
+      case ((None, s), _) => (None, s)
     }
-    Some((m, l), s)
+    Some((m, l), s2)
   }
 
 }

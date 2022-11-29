@@ -29,7 +29,7 @@ object Manager {
         getGroups(g)
       })
       .flatMap(getMatch)
-      .unfold2(scala.collection.mutable.Set[String]())(getPlayers)
+      .unfold2(Set[String]())(getPlayers)
       .collect({
         case (m, Some(l)) => (m, l)
       })

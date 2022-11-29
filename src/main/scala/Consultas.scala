@@ -146,7 +146,7 @@ object Consultas {
       .edges
       .groupBy(col("eco"), col("src"),
         col("dst"),col("w_result"),
-        col("b_result"), col("result"))
+        col("b_result"))
       .count()
       .groupBy("w_result", "b_result")
       .count()

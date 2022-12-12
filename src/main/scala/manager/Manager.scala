@@ -34,32 +34,6 @@ object Manager {
         case (m, Some(l)) => (m, l)
       })
 
-    /*({
-        (m, s) => {
-          itCounter.next()
-          if (!s.contains(m.white.username) && !s.contains(m.black.username)){
-            getPlayer(m.white.username) flatMap { whiteVal =>
-              getPlayer(m.black.username) map { blackVal =>
-                ((m, whiteVal :: blackVal :: Nil), s + (m.white.username, m.black.username))
-              }
-            }
-          }
-          else if (!s.contains(m.white.username) && s.contains(m.black.username)){
-            getPlayer(m.white.username) map{whiteVal =>
-              ((m, whiteVal :: Nil), s + m.white.username)
-            }
-
-          }
-          else if (s.contains(m.white.username) && !s.contains(m.black.username)){
-            getPlayer(m.black.username) map{blackVal =>
-              ((m, blackVal :: Nil), s + m.black.username)
-            }
-          }
-          else{
-            Some((m, Nil), s)
-          }
-      }})*/
-
 
   }
 

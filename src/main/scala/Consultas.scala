@@ -33,7 +33,7 @@ object Consultas {
     val e = spark
       .read
       .schema(schemaMatches)
-      .json("matches.json")
+      .json("s3://tfg-chess-milagros/matches.json")
       .withColumn("src", lower(expr("white.username")))// white username
       .withColumn("w_result", expr("white.result"))// white result
       .withColumn("dst", lower(expr("black.username"))) // black username
@@ -57,7 +57,7 @@ object Consultas {
     val v = spark
       .read
       .schema(schemaProfiles)
-      .json("players.json")
+      .json("s3://tfg-chess-milagros/players.json")
       .withColumnRenamed("username", "id")
       .withColumn("country", substring_index(col("country"), "/", -1))
 

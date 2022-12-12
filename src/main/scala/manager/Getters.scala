@@ -83,18 +83,23 @@ object Getters {
     Some(((), n + 1))
   }
 
+  implicit class TraverseOp[A](l: List[A]){
+    def traverse[B](f: A => Option[B])(s: Set[A]): (Option[List[B]], Set[A]) = {
+      l.foldLeft[(Option[List[B]], Set[A])](Some(List()), s){
+        case ((Some(l), s), a) if !s.contains(a) => f(a) match {
+          case Some(h) => (Some(h :: l), s+a)
+          case None => (None, s)
+        }
+        case ((Some(l), s), _) => (Some(l), s)
+        case ((None, s), _) => (None, s)
+      }
+    }
+  }
+
   def getPlayers(m: Match, s: Set[String]): Option[((Match, Option[List[Profile]]), Set[String])] = {
     itCounter.next()
     val (l, s2) : (Option[List[Profile]], Set[String]) = List(m.white.username, m.black.username)
-      .foldLeft[(Option[List[Profile]], Set[String])]((Some(List()), s)){
-      case ((Some(l), s), name) if !s.contains(name) => getPlayer(name) match{
-        case Some(p) =>
-          (Some(p :: l), s+name)
-        case None => (None, s)
-      }
-      case ((Some(l), s), _) => (Some(l), s)
-      case ((None, s), _) => (None, s)
-    }
+      .traverse(getPlayer)(s)
     Some((m, l), s2)
   }
 

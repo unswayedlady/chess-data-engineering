@@ -6,6 +6,7 @@ import scala.util.Try
 import spray.json._
 import Parser._
 import UnfoldIterator._
+import cats.implicits._, cats.data._
 
 // Getters that intend to finally obtain matches and players' data
 
@@ -83,24 +84,20 @@ object Getters {
     Some(((), n + 1))
   }
 
-  implicit class TraverseOp[A](l: List[A]){
-    def traverse[B](f: A => Option[B])(s: Set[A]): (Option[List[B]], Set[A]) = {
-      l.foldLeft[(Option[List[B]], Set[A])](Some(List()), s){
-        case ((Some(l), s), a) if !s.contains(a) => f(a) match {
-          case Some(h) => (Some(h :: l), s+a)
-          case None => (None, s)
-        }
-        case ((Some(l), s), _) => (Some(l), s)
-        case ((None, s), _) => (None, s)
-      }
-    }
-  }
-
   def getPlayers(m: Match, s: Set[String]): Option[((Match, Option[List[Profile]]), Set[String])] = {
     itCounter.next()
-    val (l, s2) : (Option[List[Profile]], Set[String]) = List(m.white.username, m.black.username)
-      .traverse(getPlayer)(s)
-    Some((m, l), s2)
+    val ev = List(m.white.username, m.black.username).traverse[StateT[Option, Set[String], *], Option[Profile]](
+      player => StateT(s => if (!s.contains(player))
+        getPlayer(player) match{
+              case None => Some((s, None))
+              case p => Some((s + player, p))
+            }
+      else Some((s, None))
+      )
+    )
+    val l_output = ev.runA(s).get.sequence
+    val s_output = ev.runS(s).get
+    Some((m, l_output), s_output)
   }
 
 }

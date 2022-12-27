@@ -30,9 +30,6 @@ object Manager {
       })
       .flatMap(getMatch)
       .unfold2(Set[String]())(getPlayers)
-      .collect({
-        case (m, Some(l)) => (m, l)
-      })
 
 
   }

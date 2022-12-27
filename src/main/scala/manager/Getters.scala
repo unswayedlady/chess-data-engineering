@@ -84,18 +84,19 @@ object Getters {
     Some(((), n + 1))
   }
 
-  def getPlayers(m: Match, s: Set[String]): Option[((Match, Option[List[Profile]]), Set[String])] = {
+  def getPlayers(m: Match, s: Set[String]): Option[((Match, List[Profile]), Set[String])] = {
     itCounter.next()
-    val ev = List(m.white.username, m.black.username).traverse[StateT[Option, Set[String], *], Option[Profile]](
-      player => StateT(s => if (!s.contains(player))
-        getPlayer(player) match{
-              case None => Some((s, None))
-              case p => Some((s + player, p))
-            }
-      else Some((s, None))
-      )
-    )
-    val l_output = ev.runA(s).get.sequence
+    val ev: StateT[Option, Set[String], List[Option[Profile]]] =
+      List(m.white.username, m.black.username).traverse[StateT[Option, Set[String], *], Option[Profile]](
+        player => StateT(s => if (!s.contains(player))
+          getPlayer(player) match{
+            case None => None
+            case p => Some((s + player, p))
+          }
+        else Some((s, None))
+        )
+      ).map(_.filter(_.isDefined))
+    val l_output = ev.runA(s).get.sequence.get
     val s_output = ev.runS(s).get
     Some((m, l_output), s_output)
   }

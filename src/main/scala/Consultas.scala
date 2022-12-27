@@ -1,18 +1,17 @@
-import org.apache.spark.sql.SparkSession
+import caseapp._
+import io.ArgumentsQueries
+import org.apache.spark.sql.{SaveMode, SparkSession}
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types.{StructField, _}
+import org.apache.spark.sql.types._
 import org.graphframes.GraphFrame
 
-object Consultas {
+object Consultas extends CaseApp[ArgumentsQueries]{
 
-  def main(args: Array[String]):Unit={
+  def run(args: ArgumentsQueries, r: RemainingArgs): Unit = {
     val spark = SparkSession
       .builder
       .appName("Chess")
       .master("local[*]")
-      .config("spark.eventLog.enabled", value = true)
-      .config("spark.eventLog.dir", "C:\\Users\\milam\\OneDrive\\Escritorio\\spark-events")
-      .config("spark.history.fs.logDirectory", "C:\\Users\\milam\\OneDrive\\Escritorio\\spark-events")
       .getOrCreate()
 
     spark.sparkContext.setLogLevel("ERROR")
@@ -33,7 +32,7 @@ object Consultas {
     val e = spark
       .read
       .schema(schemaMatches)
-      .json("s3://tfg-chess-milagros/matches.json")
+      .json(args.inputMatchesPath)
       .withColumn("src", lower(expr("white.username")))// white username
       .withColumn("w_result", expr("white.result"))// white result
       .withColumn("dst", lower(expr("black.username"))) // black username
@@ -57,18 +56,18 @@ object Consultas {
     val v = spark
       .read
       .schema(schemaProfiles)
-      .json("s3://tfg-chess-milagros/players.json")
+      .json(args.inputPlayersPath)
       .withColumnRenamed("username", "id")
       .withColumn("country", substring_index(col("country"), "/", -1))
 
     val g = GraphFrame(v, e)
 
-    println("1) Vertices")
+    /*println("1) Vertices")
     g.vertices.show()
 
     println("2) Edges")
     g.edges.show()
-    g.edges.printSchema()
+    g.edges.printSchema()*/
 
     /*g
         .edges
@@ -78,14 +77,16 @@ object Consultas {
 
     // Basic queries
 
-    println("1º Matches where Sicilian defense was played")
+//    println("1º Matches where Sicilian defense was played")
 
     g
       .edges
       .where(col("eco").contains("Sicilian-Defense"))
-      .show(5)
+      .write
+      .mode(SaveMode.Overwrite)
+      .json(args.outputPath)
 
-    println("2º Most popular player who got max number of followers in Chess.com")
+//    println("2º Most popular player who got max number of followers in Chess.com")
 
     g
       .vertices
@@ -93,7 +94,9 @@ object Consultas {
       .agg(max("followers").alias("max_followers"))
       .select(col("id"), col("max_followers"))
       .orderBy(desc("max_followers"))
-      .show(1)
+      .write
+      .mode(SaveMode.Append)
+      .json(args.outputPath)
 
     // Motif finding
 
@@ -101,33 +104,46 @@ object Consultas {
       .find("(b)-[e]->(n)")
 
 
-    println("3º Matches where White's player is American or Black's is Spanish")
+//    println("3º Matches where White's player is American or Black's is Spanish")
 
     motif
       .filter("b.country == \"US\" OR n.country == \"ES\"")
-      .select("b.id", "b.country", "n.id", "n.country")
+      .select(col("b.id").as("b.id"),
+        col("b.country").as("b.country"),
+        col("n.id").as("n.id"),
+        col("n.country").as("n.country"))
       .filter("b.id != n.id")
-      .show()
+      .write
+      .mode(SaveMode.Append)
+      .json(args.outputPath)
 
-    println("4º Matches where White's player registered before 2015-09-12 00:00")
+//    println("4º Matches where White's player registered before 2015-09-12 00:00")
 
     motif
       .filter(col("b.joined") < "2015-09-12 00:00")
       .select("b.id", "b.joined")
       .distinct()
-      .show()
+      .write
+      .mode(SaveMode.Append)
+      .json(args.outputPath)
 
     // Graph algorithm
 
-    println("5º Get player with max white plays (indegree, as src is for White) and black plays (outdegree, as dst stands for Black)")
+//    println("5º Get player with max white plays (indegree, as src is for White) and black plays (outdegree, as dst stands for Black)")
 
     val maxWhitePlays = g.inDegrees
-    maxWhitePlays.orderBy(desc("inDegree")).show(1)
+    maxWhitePlays.orderBy(desc("inDegree"))
+      .write
+      .mode(SaveMode.Append)
+      .json(args.outputPath)
 
     val maxBlackPlays = g.outDegrees
-    maxBlackPlays.orderBy(desc("outDegree")).show(1)
+    maxBlackPlays.orderBy(desc("outDegree"))
+      .write
+      .mode(SaveMode.Append)
+      .json(args.outputPath)
 
-    println("6º Identify important players based on played matches")
+//    println("6º Identify important players based on played matches")
 
     g
       .pageRank
@@ -137,25 +153,28 @@ object Consultas {
       .vertices
       .distinct()
       .orderBy(desc("pagerank"))
-      .show()
+      .write
+      .mode(SaveMode.Append)
+      .json(args.outputPath)
 
-    println("7º Get percentage of different matches' result")
+//    println("7º Get percentage of different matches' result")
 
     val results =
-    g
-      .edges
-      .groupBy(col("eco"), col("src"),
-        col("dst"),col("w_result"),
-        col("b_result"))
-      .count()
-      .groupBy("w_result", "b_result")
-      .count()
-      .orderBy(desc("count"))
+      g
+        .edges
+        .groupBy(col("eco"), col("src"),
+          col("dst"),col("w_result"),
+          col("b_result"))
+        .count()
+        .groupBy("w_result", "b_result")
+        .count()
+        .orderBy(desc("count"))
 
     results
       .withColumn("percentage", col("count") / lit(results.select(sum("count")).collect()(0).getLong(0)))
-      .show()
-
+      .write
+      .mode(SaveMode.Append)
+      .json(args.outputPath)
 
   }
 

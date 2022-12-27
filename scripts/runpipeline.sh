@@ -2,7 +2,7 @@
 #!/bin/bash
 
 CLUSTER_ID=$1
-MAIN_JAR=s3://tfg-chess-milagros/Spark-Pruebas.jar
+MAIN_JAR=s3://tfg-chess-milagros/Consultas.jar
 MATCHES_PATH=s3://tfg-chess-milagros/matches.json
 PLAYERS_PATH=s3://tfg-chess-milagros/players.json
 OUTPUT_PATH=s3://tfg-chess-milagros/output.json

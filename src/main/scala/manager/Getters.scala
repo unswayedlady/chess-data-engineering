@@ -7,6 +7,7 @@ import spray.json._
 import Parser._
 import UnfoldIterator._
 import cats.implicits._, cats.data._
+import Fold._
 
 // Getters that intend to finally obtain matches and players' data
 

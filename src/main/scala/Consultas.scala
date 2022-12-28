@@ -82,6 +82,7 @@ object Consultas extends CaseApp[ArgumentsQueries]{
     g
       .edges
       .where(col("eco").contains("Sicilian-Defense"))
+      .coalesce(1)
       .write
       .mode(SaveMode.Overwrite)
       .json(args.outputPath)
@@ -94,6 +95,7 @@ object Consultas extends CaseApp[ArgumentsQueries]{
       .agg(max("followers").alias("max_followers"))
       .select(col("id"), col("max_followers"))
       .orderBy(desc("max_followers"))
+      .coalesce(1)
       .write
       .mode(SaveMode.Append)
       .json(args.outputPath)
@@ -113,6 +115,7 @@ object Consultas extends CaseApp[ArgumentsQueries]{
         col("n.id").as("n.id"),
         col("n.country").as("n.country"))
       .filter("b.id != n.id")
+      .coalesce(1)
       .write
       .mode(SaveMode.Append)
       .json(args.outputPath)
@@ -123,6 +126,7 @@ object Consultas extends CaseApp[ArgumentsQueries]{
       .filter(col("b.joined") < "2015-09-12 00:00")
       .select("b.id", "b.joined")
       .distinct()
+      .coalesce(1)
       .write
       .mode(SaveMode.Append)
       .json(args.outputPath)
@@ -133,12 +137,14 @@ object Consultas extends CaseApp[ArgumentsQueries]{
 
     val maxWhitePlays = g.inDegrees
     maxWhitePlays.orderBy(desc("inDegree"))
+      .coalesce(1)
       .write
       .mode(SaveMode.Append)
       .json(args.outputPath)
 
     val maxBlackPlays = g.outDegrees
     maxBlackPlays.orderBy(desc("outDegree"))
+      .coalesce(1)
       .write
       .mode(SaveMode.Append)
       .json(args.outputPath)
@@ -153,6 +159,7 @@ object Consultas extends CaseApp[ArgumentsQueries]{
       .vertices
       .distinct()
       .orderBy(desc("pagerank"))
+      .coalesce(1)
       .write
       .mode(SaveMode.Append)
       .json(args.outputPath)
@@ -172,6 +179,7 @@ object Consultas extends CaseApp[ArgumentsQueries]{
 
     results
       .withColumn("percentage", col("count") / lit(results.select(sum("count")).collect()(0).getLong(0)))
+      .coalesce(1)
       .write
       .mode(SaveMode.Append)
       .json(args.outputPath)

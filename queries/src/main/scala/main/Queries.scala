@@ -1,11 +1,12 @@
-import caseapp._
-import io.ArgumentsQueries
-import org.apache.spark.sql.{SaveMode, SparkSession}
+package main
+
+import caseapp.{CaseApp, RemainingArgs}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
+import org.apache.spark.sql.{SaveMode, SparkSession}
 import org.graphframes.GraphFrame
 
-object Consultas extends CaseApp[ArgumentsQueries]{
+object Queries extends CaseApp[ArgumentsQueries] {
 
   def run(args: ArgumentsQueries, r: RemainingArgs): Unit = {
     val spark = SparkSession
@@ -33,8 +34,8 @@ object Consultas extends CaseApp[ArgumentsQueries]{
       .read
       .schema(schemaMatches)
       .json(args.inputMatchesPath)
-      .withColumn("src", lower(expr("white.username")))// white username
-      .withColumn("w_result", expr("white.result"))// white result
+      .withColumn("src", lower(expr("white.username"))) // white username
+      .withColumn("w_result", expr("white.result")) // white result
       .withColumn("dst", lower(expr("black.username"))) // black username
       .withColumn("b_result", expr("black.result")) // black result
       .withColumn("final_result", regexp_extract(col("pgn"), "1\\. .*(1-0|0-1|1\\/2-1\\/2)", 1)) // final result
@@ -77,7 +78,7 @@ object Consultas extends CaseApp[ArgumentsQueries]{
 
     // Basic queries
 
-//    println("1º Matches where Sicilian defense was played")
+    //    println("1º Matches where Sicilian defense was played")
 
     g
       .edges
@@ -87,7 +88,7 @@ object Consultas extends CaseApp[ArgumentsQueries]{
       .mode(SaveMode.Overwrite)
       .json(args.outputPath)
 
-//    println("2º Most popular player who got max number of followers in Chess.com")
+    //    println("2º Most popular player who got max number of followers in Chess.com")
 
     g
       .vertices
@@ -106,7 +107,7 @@ object Consultas extends CaseApp[ArgumentsQueries]{
       .find("(b)-[e]->(n)")
 
 
-//    println("3º Matches where White's player is American or Black's is Spanish")
+    //    println("3º Matches where White's player is American or Black's is Spanish")
 
     motif
       .filter("b.country == \"US\" OR n.country == \"ES\"")
@@ -120,7 +121,7 @@ object Consultas extends CaseApp[ArgumentsQueries]{
       .mode(SaveMode.Append)
       .json(args.outputPath)
 
-//    println("4º Matches where White's player registered before 2015-09-12 00:00")
+    //    println("4º Matches where White's player registered before 2015-09-12 00:00")
 
     motif
       .filter(col("b.joined") < "2015-09-12 00:00")
@@ -133,7 +134,7 @@ object Consultas extends CaseApp[ArgumentsQueries]{
 
     // Graph algorithm
 
-//    println("5º Get player with max white plays (indegree, as src is for White) and black plays (outdegree, as dst stands for Black)")
+    //    println("5º Get player with max white plays (indegree, as src is for White) and black plays (outdegree, as dst stands for Black)")
 
     val maxWhitePlays = g.inDegrees
     maxWhitePlays.orderBy(desc("inDegree"))
@@ -149,7 +150,7 @@ object Consultas extends CaseApp[ArgumentsQueries]{
       .mode(SaveMode.Append)
       .json(args.outputPath)
 
-//    println("6º Identify important players based on played matches")
+    //    println("6º Identify important players based on played matches")
 
     g
       .pageRank
@@ -164,13 +165,13 @@ object Consultas extends CaseApp[ArgumentsQueries]{
       .mode(SaveMode.Append)
       .json(args.outputPath)
 
-//    println("7º Get percentage of different matches' result")
+    //    println("7º Get percentage of different matches' result")
 
     val results =
       g
         .edges
         .groupBy(col("eco"), col("src"),
-          col("dst"),col("w_result"),
+          col("dst"), col("w_result"),
           col("b_result"))
         .count()
         .groupBy("w_result", "b_result")

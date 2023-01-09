@@ -1,10 +1,12 @@
+package main
+
 import caseapp.{CaseApp, RemainingArgs}
-import io.{Arguments, Io}
+import io.Io
 import manager.Manager
 
-object Main extends CaseApp[Arguments]{
+object Download extends CaseApp[ArgumentsDownload] {
 
-  def run(args: Arguments, r: RemainingArgs): Unit = {
+  def run(args: ArgumentsDownload, r: RemainingArgs): Unit = {
 
     // Creating io instance
 
@@ -13,8 +15,8 @@ object Main extends CaseApp[Arguments]{
     // Download chess data
 
     Manager() // get data
-    .take(args.number)
-    .foreach(io.write) // write to disk*/
+      .take(args.number)
+      .foreach(io.write) // write to disk*/
 
   }
 

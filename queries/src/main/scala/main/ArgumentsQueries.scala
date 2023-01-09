@@ -1,4 +1,4 @@
-package io
+package main
 
 case class ArgumentsQueries(
                              inputMatchesPath: String = "matches.json",

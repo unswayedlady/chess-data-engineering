@@ -7,17 +7,10 @@ import manager.Manager
 object Download extends CaseApp[ArgumentsDownload] {
 
   def run(args: ArgumentsDownload, r: RemainingArgs): Unit = {
-
-    // Creating io instance
-
     val io = new Io(args.matchesFile, args.playersFile)
-
-    // Download chess data
-
-    Manager() // get data
+    Manager()
       .take(args.number)
-      .foreach(io.write) // write to disk*/
-
+      .foreach(io.write)
   }
 
 }

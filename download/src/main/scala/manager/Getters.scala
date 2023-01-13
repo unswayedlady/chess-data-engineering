@@ -9,8 +9,6 @@ import UnfoldIterator._
 import cats.implicits._, cats.data._
 import Fold._
 
-// Getters that intend to finally obtain matches and players' data
-
 object Getters {
 
   def getTitledPlayers(title: String): Iterator[String] = {

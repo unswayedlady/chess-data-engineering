@@ -11,7 +11,7 @@ class Io (val matchesFileName: String, val playersFileName: String){
   val matchesFile = new FileWriter(matchesFileName)
   val playersFile = new FileWriter(playersFileName)
 
-  def write(v: Tuple2[Match, List[Profile]]) : Unit = {
+  def write(v: (Match, List[Profile])) : Unit = {
     val m = v._1
     matchesFile.write(m.toJson.toString() + "\n")
     val l = v._2

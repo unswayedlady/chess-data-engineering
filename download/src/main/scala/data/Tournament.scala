@@ -1,3 +1,3 @@
 package data
 
-case class Tournament(rounds: List[String]) // link of rounds of tournaments
+case class Tournament(rounds: List[String])

@@ -5,8 +5,6 @@ import spray.json._
 
 import java.sql.Timestamp
 
-// Json parser
-
 object Parser extends DefaultJsonProtocol{
   implicit object TimestampJsonFormat extends JsonFormat[Timestamp] {
     def write(x: Timestamp): JsNumber = JsNumber(x.getTime)

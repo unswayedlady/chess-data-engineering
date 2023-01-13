@@ -63,23 +63,6 @@ object Queries extends CaseApp[ArgumentsQueries] {
 
     val g = GraphFrame(v, e)
 
-    /*println("1) Vertices")
-    g.vertices.show()
-
-    println("2) Edges")
-    g.edges.show()
-    g.edges.printSchema()*/
-
-    /*g
-        .edges
-        .select("pgn")
-        .collect()
-        .foreach(println)*/
-
-    // Basic queries
-
-    //    println("1º Matches where Sicilian defense was played")
-
     g
       .edges
       .where(col("eco").contains("Sicilian-Defense"))
@@ -87,8 +70,6 @@ object Queries extends CaseApp[ArgumentsQueries] {
       .write
       .mode(SaveMode.Overwrite)
       .json(args.outputPath)
-
-    //    println("2º Most popular player who got max number of followers in Chess.com")
 
     g
       .vertices
@@ -101,13 +82,8 @@ object Queries extends CaseApp[ArgumentsQueries] {
       .mode(SaveMode.Append)
       .json(args.outputPath)
 
-    // Motif finding
-
     val motif = g
       .find("(b)-[e]->(n)")
-
-
-    //    println("3º Matches where White's player is American or Black's is Spanish")
 
     motif
       .filter("b.country == \"US\" OR n.country == \"ES\"")
@@ -121,8 +97,6 @@ object Queries extends CaseApp[ArgumentsQueries] {
       .mode(SaveMode.Append)
       .json(args.outputPath)
 
-    //    println("4º Matches where White's player registered before 2015-09-12 00:00")
-
     motif
       .filter(col("b.joined") < "2015-09-12 00:00")
       .select("b.id", "b.joined")
@@ -131,10 +105,6 @@ object Queries extends CaseApp[ArgumentsQueries] {
       .write
       .mode(SaveMode.Append)
       .json(args.outputPath)
-
-    // Graph algorithm
-
-    //    println("5º Get player with max white plays (indegree, as src is for White) and black plays (outdegree, as dst stands for Black)")
 
     val maxWhitePlays = g.inDegrees
     maxWhitePlays.orderBy(desc("inDegree"))
@@ -150,8 +120,6 @@ object Queries extends CaseApp[ArgumentsQueries] {
       .mode(SaveMode.Append)
       .json(args.outputPath)
 
-    //    println("6º Identify important players based on played matches")
-
     g
       .pageRank
       .resetProbability(0.15)
@@ -164,8 +132,6 @@ object Queries extends CaseApp[ArgumentsQueries] {
       .write
       .mode(SaveMode.Append)
       .json(args.outputPath)
-
-    //    println("7º Get percentage of different matches' result")
 
     val results =
       g

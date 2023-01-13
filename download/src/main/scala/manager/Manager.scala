@@ -4,8 +4,6 @@ import data._
 import Getters._
 import manager.UnfoldIterator.Op
 
-// Manager class intended to download data from API rest
-
 object Manager {
 
   def apply(): Iterator[(Match, List[Profile])] = {

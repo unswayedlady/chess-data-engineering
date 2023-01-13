@@ -18,11 +18,7 @@ lazy val root = (project in file("."))
   )
 
 lazy val commonSettings = Seq(
-  libraryDependencies ++= Seq(
-    "org.apache.spark" %% "spark-core" % sparkVersion,
-    "org.apache.spark" %% "spark-sql" % sparkVersion,
-    "com.github.alexarchambault" %% "case-app" % caseAppVersion
-  )
+  libraryDependencies ++= Seq("com.github.alexarchambault" %% "case-app" % caseAppVersion)
 )
 
 lazy val assemblySettings = Seq(
@@ -67,6 +63,9 @@ lazy val queries = project
   .settings(
     commonSettings,
     name += "Queries",
-    libraryDependencies ++= Seq("org.apache.spark" %% "spark-graphx" % sparkVersion),
+    libraryDependencies ++= Seq(
+      "org.apache.spark" %% "spark-core" % sparkVersion,
+      "org.apache.spark" %% "spark-sql" % sparkVersion,
+      "org.apache.spark" %% "spark-graphx" % sparkVersion),
     assemblySettings
   )

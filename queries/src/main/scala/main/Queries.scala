@@ -145,7 +145,9 @@ object Queries extends CaseApp[ArgumentsQueries] {
         .orderBy(desc("count"))
 
     results
-      .withColumn("percentage", col("count") / lit(results.select(sum("count")).collect()(0).getLong(0)))
+      .withColumn("percentage",
+        col("count") /
+          lit(results.select(sum("count")).collect()(0).getLong(0)))
       .coalesce(1)
       .write
       .mode(SaveMode.Append)

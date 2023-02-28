@@ -95,9 +95,15 @@ object Getters {
         else Some((s, None))
         )
       ).map(_.filter(_.isDefined))
-    val l_output = ev.runA(s).get.sequence.get
-    val s_output = ev.runS(s).get
-    Some((m, l_output), s_output)
+
+    ev.runA(s) match{
+      case Some(a) =>
+        ev.runS(s) match {
+          case Some(s) => Some((m, a.sequence.get), s)
+          case None => None
+        }
+      case None => None
+    }
   }
 
 }

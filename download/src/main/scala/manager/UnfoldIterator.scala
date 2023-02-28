@@ -38,7 +38,7 @@ object UnfoldIterator{
         case (s, it) =>
           if (!it.hasNext) None
           else{
-            f(it.next(), s)  match{
+            f(it.next(), s) match{
               case Some(v) => Some(v._1, (v._2, it))
               case _ => None
             }

@@ -34,13 +34,13 @@ object Queries extends CaseApp[ArgumentsQueries] {
       .read
       .schema(schemaMatches)
       .json(args.inputMatchesPath)
-      .withColumn("src", lower(expr("white.username"))) // white username
-      .withColumn("w_result", expr("white.result")) // white result
-      .withColumn("dst", lower(expr("black.username"))) // black username
-      .withColumn("b_result", expr("black.result")) // black result
-      .withColumn("final_result", regexp_extract(col("pgn"), "1\\. .*(1-0|0-1|1\\/2-1\\/2)", 1)) // final result
-      .withColumn("eco", substring_index(col("eco"), "/", -1)) // el opening
-      .withColumn("checkmating_piece", regexp_extract(col("pgn"), "(([1-9][0-9]*)\\. )([RQKBN]*[a-h][1-8])(#)", 0))
+      .withColumn("src", lower(expr("white.username")))
+      .withColumn("w_result", expr("white.result"))
+      .withColumn("dst", lower(expr("black.username")))
+      .withColumn("b_result", expr("black.result"))
+      .withColumn("final_result", regexp_extract(col("pgn"), "1\\. .*(1-0|0-1|1\\/2-1\\/2)", 1))
+      .withColumn("eco", substring_index(col("eco"), "/", -1))
+      .withColumn("eco",  regexp_extract(col("eco"), "([^0-9]*)([0-9].*)?", 1))
       .drop("white", "black")
 
     val schemaProfiles = StructType(Array(
@@ -63,9 +63,24 @@ object Queries extends CaseApp[ArgumentsQueries] {
 
     val g = GraphFrame(v, e)
 
-    g
-      .edges
-      .where(col("eco").contains("Sicilian-Defense"))
+    val q1 =
+      g
+        .edges
+        .where(col("eco").contains("Sicilian"))
+        .groupBy("eco")
+        .count()
+        .orderBy(desc("count"))
+
+    import plotly._, Plotly._
+
+    //visualización de la consulta 1
+
+    val x : Seq[String] = q1.select("eco").collect().toSeq.map(_.toString().replaceAll("[\\[\\].]", "")).filterNot(_.endsWith("-"))
+    val y: Seq[Int] = q1.select("count").collect().toSeq.map(_.toString().replaceAll("[\\[\\]]", "").toInt)
+
+    Bar(x, y, name="q1").plot()
+
+    q1
       .coalesce(1)
       .write
       .mode(SaveMode.Overwrite)
@@ -83,23 +98,22 @@ object Queries extends CaseApp[ArgumentsQueries] {
       .json(args.outputPath)
 
     val motif = g
-      .find("(b)-[e]->(n)")
+      .find("(w)-[e]->(b)")
+
+      motif
+        .filter("w.country == \"US\" OR b.country == \"ES\"")
+        .select(col("w.id").as("w_player"),
+          col("w.country").as("w_country"),
+          col("b.id").as("b_player"),
+          col("b.country").as("b_country"))
+        .filter("w_player != b_player") .coalesce(1)
+        .write
+        .mode(SaveMode.Append)
+        .json(args.outputPath)
 
     motif
-      .filter("b.country == \"US\" OR n.country == \"ES\"")
-      .select(col("b.id").as("b.id"),
-        col("b.country").as("b.country"),
-        col("n.id").as("n.id"),
-        col("n.country").as("n.country"))
-      .filter("b.id != n.id")
-      .coalesce(1)
-      .write
-      .mode(SaveMode.Append)
-      .json(args.outputPath)
-
-    motif
-      .filter(col("b.joined") < "2015-09-12 00:00")
-      .select("b.id", "b.joined")
+      .filter(col("w.joined") < "2015-09-12 00:00")
+      .select("w.id", "w.joined")
       .distinct()
       .coalesce(1)
       .write
@@ -136,10 +150,6 @@ object Queries extends CaseApp[ArgumentsQueries] {
     val results =
       g
         .edges
-        .groupBy(col("eco"), col("src"),
-          col("dst"), col("w_result"),
-          col("b_result"))
-        .count()
         .groupBy("w_result", "b_result")
         .count()
         .orderBy(desc("count"))

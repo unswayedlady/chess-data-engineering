@@ -10,7 +10,7 @@ val catsVersion = "2.0.0-M2"
 
 lazy val root = (project in file("."))
   .settings(
-    name := "Spark-Pruebas"
+    name := "SparkProject"
   )
   .aggregate(
     download,
@@ -66,6 +66,8 @@ lazy val queries = project
     libraryDependencies ++= Seq(
       "org.apache.spark" %% "spark-core" % sparkVersion,
       "org.apache.spark" %% "spark-sql" % sparkVersion,
-      "org.apache.spark" %% "spark-graphx" % sparkVersion),
+      "org.apache.spark" %% "spark-graphx" % sparkVersion,
+      "org.plotly-scala" %% "plotly-render" % "0.7.0"
+    ),
     assemblySettings
   )

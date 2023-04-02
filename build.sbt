@@ -1,9 +1,9 @@
 import scala.language.postfixOps
 
 ThisBuild / version := "0.1.0-SNAPSHOT"
-ThisBuild / scalaVersion := "2.11.12"
+ThisBuild / scalaVersion := "2.12.8"
 
-val sparkVersion = "2.4.3"
+val sparkVersion = "2.4.4"
 val caseAppVersion = "2.0.0-M3"
 val catsVersion = "2.0.0-M2"
 
@@ -51,7 +51,7 @@ lazy val download = project
   .settings(
     commonSettings,
     name += "Download",
-    addCompilerPlugin("org.typelevel" % "kind-projector" % "0.13.2" cross CrossVersion.full),
+    addCompilerPlugin("org.typelevel" % "kind-projector" % "0.11.0" cross CrossVersion.full),
     libraryDependencies ++= Seq(
       "com.lihaoyi" %% "requests" % "0.7.1",
       "io.spray" %%  "spray-json" % "1.3.6",

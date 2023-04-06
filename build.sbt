@@ -7,7 +7,6 @@ val sparkVersion = "2.4.4"
 val caseAppVersion = "2.0.0-M3"
 val catsVersion = "2.0.0-M2"
 
-
 lazy val root = (project in file("."))
   .settings(
     name := "SparkProject"
@@ -24,6 +23,7 @@ lazy val commonSettings = Seq(
 lazy val assemblySettings = Seq(
   assembly / mainClass := Some("src/main/scala/queries/main/Queries.scala"),
   assembly / assemblyJarName := "Queries.jar",
+  assembly / assemblyShadeRules := Seq(ShadeRule.rename("shapeless.**" -> "new_shapeless.@1").inAll),
   assemblyMergeStrategy in assembly := {
     case PathList("org","aopalliance", xs @ _*) => MergeStrategy.last
     case PathList("javax", "inject", xs @ _*) => MergeStrategy.last
@@ -63,11 +63,14 @@ lazy val queries = project
   .settings(
     commonSettings,
     name += "Queries",
+    resolvers += "Sonatype OSS Snapshots" at "https://oss.sonatype.org/content/repositories/snapshots",
     libraryDependencies ++= Seq(
       "org.apache.spark" %% "spark-core" % sparkVersion,
       "org.apache.spark" %% "spark-sql" % sparkVersion,
       "org.apache.spark" %% "spark-graphx" % sparkVersion,
-      "org.plotly-scala" %% "plotly-render" % "0.7.0"
-    ),
+      "org.plotly-scala" %% "plotly-render" % "0.7.0",
+      "com.github.wookietreiber" %% "scala-chart" % "latest.release",
+      "com.lihaoyi" %% "scalatags" % "0.9.4"
+),
     assemblySettings
   )

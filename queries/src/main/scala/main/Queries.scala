@@ -1,6 +1,5 @@
 package main
 
-import caseapp.{CaseApp, RemainingArgs}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{SaveMode, SparkSession}
@@ -10,9 +9,21 @@ import plotly._
 import scalax.chart.PieChart
 import scalax.chart.module.Exporting._
 
-object Queries extends CaseApp[ArgumentsQueries] {
+object Queries {
 
-  def run(args: ArgumentsQueries, r: RemainingArgs): Unit = {
+  def main(args: Array[String]): Unit = {
+
+    var inputMatchesPath: String = "matches.json"
+    var inputPlayersPath: String = "players.json"
+    var outputPath: String = "output.json"
+
+    args.sliding(3, 3).toList.collect {
+      case Array("--inputMatchesPath", inputMatches: String) => inputMatchesPath = inputMatches
+      case Array("--inputPlayersPath", inputPlayers: String) => inputPlayersPath = inputPlayers
+      case Array("--outputPath", output: String) => outputPath = output
+    }
+
+
     val spark = SparkSession
       .builder
       .appName("Chess")
@@ -37,7 +48,7 @@ object Queries extends CaseApp[ArgumentsQueries] {
     val e = spark
       .read
       .schema(schemaMatches)
-      .json(args.inputMatchesPath)
+      .json(inputMatchesPath)
       .withColumn("src", lower(expr("white.username")))
       .withColumn("w_result", expr("white.result"))
       .withColumn("dst", lower(expr("black.username")))
@@ -61,7 +72,7 @@ object Queries extends CaseApp[ArgumentsQueries] {
     val v = spark
       .read
       .schema(schemaProfiles)
-      .json(args.inputPlayersPath)
+      .json(inputPlayersPath)
       .withColumnRenamed("username", "id")
       .withColumn("country", substring_index(col("country"), "/", -1))
 
@@ -88,7 +99,7 @@ object Queries extends CaseApp[ArgumentsQueries] {
       .coalesce(1)
       .write
       .mode(SaveMode.Overwrite)
-      .json(args.outputPath)
+      .json(outputPath)
 
     // 2) Most popular player who got max number of followers in Chess.com
 
@@ -101,7 +112,7 @@ object Queries extends CaseApp[ArgumentsQueries] {
       .coalesce(1)
       .write
       .mode(SaveMode.Append)
-      .json(args.outputPath)
+      .json(outputPath)
 
     val motif = g
       .find("(w)-[e]->(b)")
@@ -140,7 +151,7 @@ object Queries extends CaseApp[ArgumentsQueries] {
       .coalesce(1)
       .write
       .mode(SaveMode.Append)
-      .json(args.outputPath)
+      .json(outputPath)
 
     // 4) Matches where White's player registered before 2015-09-12 00:00
 
@@ -164,7 +175,7 @@ object Queries extends CaseApp[ArgumentsQueries] {
       .coalesce(1)
       .write
       .mode(SaveMode.Append)
-      .json(args.outputPath)
+      .json(outputPath)
 
     //5) Get player with max white plays (indegree, as src is for White) and black plays (outdegree, as dst stands for Black)
 
@@ -174,7 +185,7 @@ object Queries extends CaseApp[ArgumentsQueries] {
       .coalesce(1)
       .write
       .mode(SaveMode.Append)
-      .json(args.outputPath)
+      .json(outputPath)
 
     val maxBlackPlays = g.outDegrees.orderBy(desc("outDegree"))
 
@@ -182,7 +193,7 @@ object Queries extends CaseApp[ArgumentsQueries] {
       .coalesce(1)
       .write
       .mode(SaveMode.Append)
-      .json(args.outputPath)
+      .json(outputPath)
 
     //6) Identify important players based on played matches
 
@@ -197,7 +208,7 @@ object Queries extends CaseApp[ArgumentsQueries] {
       .coalesce(1)
       .write
       .mode(SaveMode.Append)
-      .json(args.outputPath)
+      .json(outputPath)
 
     // 7) Get percentage of different matches' result
 
@@ -233,7 +244,7 @@ object Queries extends CaseApp[ArgumentsQueries] {
       .coalesce(1)
       .write
       .mode(SaveMode.Append)
-      .json(args.outputPath)
+      .json(outputPath)
 
   }
 

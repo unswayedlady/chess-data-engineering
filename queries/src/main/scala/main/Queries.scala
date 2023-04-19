@@ -17,12 +17,19 @@ object Queries {
     var inputPlayersPath: String = "players.json"
     var outputPath: String = "output.json"
 
-    args.sliding(3, 3).toList.collect {
-      case Array("--inputMatchesPath", inputMatches: String) => inputMatchesPath = inputMatches
-      case Array("--inputPlayersPath", inputPlayers: String) => inputPlayersPath = inputPlayers
-      case Array("--outputPath", output: String) => outputPath = output
-    }
+    args
+      .sliding(2, 2)
+      .toList
+      .iterator
+      .foreach{
+        case Array("--inputMatchesPath", inputMatches: String) => inputMatchesPath = inputMatches
+        case Array("--inputPlayersPath", inputPlayers: String) => inputPlayersPath = inputPlayers
+        case Array("--outputPath", output: String) => outputPath = output
+      }
 
+    println(inputMatchesPath)
+    println(inputPlayersPath)
+    println(outputPath)
 
     val spark = SparkSession
       .builder

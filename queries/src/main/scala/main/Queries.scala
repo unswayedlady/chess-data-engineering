@@ -4,10 +4,6 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{SaveMode, SparkSession}
 import org.graphframes.GraphFrame
-import plotly.Plotly._
-import plotly._
-import scalax.chart.PieChart
-import scalax.chart.module.Exporting._
 
 object Queries {
 
@@ -15,7 +11,7 @@ object Queries {
 
     var inputMatchesPath: String = "matches.json"
     var inputPlayersPath: String = "players.json"
-    var outputPath: String = "output.json"
+    var outputPath: String = "output"
 
     args
       .sliding(2, 2)
@@ -26,10 +22,6 @@ object Queries {
         case Array("--inputPlayersPath", inputPlayers: String) => inputPlayersPath = inputPlayers
         case Array("--outputPath", output: String) => outputPath = output
       }
-
-    println(inputMatchesPath)
-    println(inputPlayersPath)
-    println(outputPath)
 
     val spark = SparkSession
       .builder
@@ -95,18 +87,12 @@ object Queries {
         .count()
         .orderBy(desc("count"))
 
-    // Data visualization Query 1
-
-    val xQ1 : Seq[String] = q1.select("eco").collect().toSeq.map(_.toString().replaceAll("[\\[\\].]", "")).filterNot(_.endsWith("-"))
-    val yQ1: Seq[Int] = q1.select("count").collect().toSeq.map(_.toString().replaceAll("[\\[\\]]", "").toInt)
-
-    Bar(xQ1, yQ1, name="Q1").plot()
-
     q1
       .coalesce(1)
       .write
       .mode(SaveMode.Overwrite)
-      .json(outputPath)
+      .format("json")
+      .save(outputPath + "/q1")
 
     // 2) Most popular player who got max number of followers in Chess.com
 
@@ -118,8 +104,9 @@ object Queries {
       .orderBy(desc("max_followers"))
       .coalesce(1)
       .write
-      .mode(SaveMode.Append)
-      .json(outputPath)
+      .mode(SaveMode.Overwrite)
+      .format("json")
+      .save(outputPath + "/q2")
 
     val motif = g
       .find("(w)-[e]->(b)")
@@ -136,29 +123,12 @@ object Queries {
           col("b.country").as("b_country"))
         .filter("w_player != b_player")
 
-    // Data visualization Query 3
-
-    val statsUsQ3 = q3.withColumn("w_country_us", col("w_country").equalTo("US")).groupBy("w_country_us").count()
-
-    val xWhiteUSQ3 : Seq[String] = Seq("US", "Other");
-    val yWhiteUSQ3 : Seq[Double] = statsUsQ3.withColumn("percentage-white-US-people", col("count") /
-      lit(statsUsQ3.select(sum("count")).collect()(0).getLong(0))).select("percentage-white-US-people").collect().toSeq.map(_.toString().replaceAll("[\\[\\]]", "").toDouble)
-
-    Bar(xWhiteUSQ3, yWhiteUSQ3, name="White-US-Q3").plot()
-
-    val statsEsQ3 = q3.withColumn("b_country_es", col("b_country").equalTo("ES")).groupBy("b_country_es").count()
-
-    val xBlackESQ3 : Seq[String] = Seq("ES", "Other")
-    val yBlackESQ3 = statsEsQ3.withColumn("percentage-black-ES-people", col("count") /
-      lit(statsUsQ3.select(sum("count")).collect()(0).getLong(0))).select("percentage-black-ES-people").collect().toSeq.map(_.toString().replaceAll("[\\[\\]]", "").toDouble)
-
-    Bar(xBlackESQ3, yBlackESQ3, name="Black-ES-Q3").plot()
-
     q3
       .coalesce(1)
       .write
-      .mode(SaveMode.Append)
-      .json(outputPath)
+      .mode(SaveMode.Overwrite)
+      .format("json")
+      .save(outputPath + "/q3")
 
     // 4) Matches where White's player registered before 2015-09-12 00:00
 
@@ -171,18 +141,11 @@ object Queries {
         .groupBy("date")
         .count()
 
-    // Data visualization Query 4
-
-    val xQ4 : Seq[Int] = q4.select("date").collect().toSeq.map(_.toString().replaceAll("[\\[\\]]", "").toInt)
-    val yQ4 : Seq[Int] = q4.select("count").collect().toSeq.map(_.toString().replaceAll("[\\[\\]]", "").toInt)
-
-    Bar(xQ4, yQ4, name="Q4").plot()
-
     q4
       .coalesce(1)
       .write
-      .mode(SaveMode.Append)
-      .json(outputPath)
+      .format("json")
+      .save(outputPath + "/q4")
 
     //5) Get player with max white plays (indegree, as src is for White) and black plays (outdegree, as dst stands for Black)
 
@@ -191,8 +154,9 @@ object Queries {
     maxWhitePlays
       .coalesce(1)
       .write
-      .mode(SaveMode.Append)
-      .json(outputPath)
+      .mode(SaveMode.Overwrite)
+      .format("json")
+      .save(outputPath + "/q5")
 
     val maxBlackPlays = g.outDegrees.orderBy(desc("outDegree"))
 
@@ -200,7 +164,8 @@ object Queries {
       .coalesce(1)
       .write
       .mode(SaveMode.Append)
-      .json(outputPath)
+      .format("json")
+      .save(outputPath + "/q5")
 
     //6) Identify important players based on played matches
 
@@ -214,8 +179,9 @@ object Queries {
       .orderBy(desc("pagerank"))
       .coalesce(1)
       .write
-      .mode(SaveMode.Append)
-      .json(outputPath)
+      .mode(SaveMode.Overwrite)
+      .format("json")
+      .save(outputPath + "/q6")
 
     // 7) Get percentage of different matches' result
 
@@ -233,25 +199,12 @@ object Queries {
             lit(results.select(sum("count")).collect()(0).getLong(0)))
         .withColumn("result", concat(col("w_result"), lit("-"), col("b_result")))
 
-
-    // Data visualization Query 7
-
-    val xQ7: Seq[String] =
-      q7.select("result").collect().toSeq.map(_.toString().replaceAll("[\\[\\].]", ""))
-    val yQ7 : Array[Double] =
-      q7.select("percentage").collect().map(_.toString().replaceAll("[\\[\\].]", "").toDouble)
-
-    val chart = PieChart(xQ7.zip(yQ7))
-
-    // Save to JPEG
-
-    ChartJPEGExporter(chart).saveAsJPEG("plot-4.jpeg")
-
     q7
       .coalesce(1)
       .write
-      .mode(SaveMode.Append)
-      .json(outputPath)
+      .mode(SaveMode.Overwrite)
+      .format("json")
+      .save(outputPath + "/q7")
 
   }
 

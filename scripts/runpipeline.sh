@@ -5,7 +5,7 @@ CLUSTER_ID=$1
 MAIN_JAR=s3://$2/Queries.jar
 MATCHES_PATH=s3://$2/matches.json
 PLAYERS_PATH=s3://$2/players.json
-OUTPUT_PATH=s3://$2/output.json
+OUTPUT_PATH=s3://$2/output
 PROFILE=default
 
 aws emr add-steps \

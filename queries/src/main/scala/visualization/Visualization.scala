@@ -2,7 +2,7 @@ package visualization
 
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions.{col, lit, sum}
-import org.apache.spark.sql.types.{LongType, StringType, StructField, StructType}
+import org.apache.spark.sql.types.{DoubleType, LongType, StringType, StructField, StructType}
 import plotly.Plotly._
 import plotly._
 import scalax.chart.PieChart
@@ -60,7 +60,20 @@ object Visualization {
 
     Bar(xQ1, yQ1, name="Q1").plot()
 
-    /*// Data visualization Query 3
+    // Data visualization Query 3
+
+    val schemaQ3 = StructType(Array(
+      StructField("w_player", StringType, nullable = true),
+      StructField("w_country", LongType, nullable = true),
+      StructField("b_player", LongType, nullable = true),
+      StructField("b_country", LongType, nullable = true)
+    ))
+
+    val q3 =
+      spark
+        .read
+        .schema(schemaQ3)
+        .json(JsonFileFinder.findJsonFiles(outputPath + "/q3").head.getPath)
 
     val statsUsQ3 = q3.withColumn("w_country_us", col("w_country").equalTo("US")).groupBy("w_country_us").count()
 
@@ -80,12 +93,37 @@ object Visualization {
 
     // Data visualization Query 4
 
+    val schemaQ4 = StructType(Array(
+      StructField("date", LongType, nullable = true),
+      StructField("count", LongType, nullable = true)
+    ))
+
+    val q4 =
+      spark
+        .read
+        .schema(schemaQ4)
+        .json(JsonFileFinder.findJsonFiles(outputPath + "/q4").head.getPath)
+
     val xQ4 : Seq[Int] = q4.select("date").collect().toSeq.map(_.toString().replaceAll("[\\[\\]]", "").toInt)
     val yQ4 : Seq[Int] = q4.select("count").collect().toSeq.map(_.toString().replaceAll("[\\[\\]]", "").toInt)
 
     Bar(xQ4, yQ4, name="Q4").plot()
 
     // Data visualization Query 7
+
+    val schemaQ7 = StructType(Array(
+      StructField("w_result", StringType, nullable = true),
+      StructField("b_result", StringType, nullable = true),
+      StructField("count", LongType, nullable = true),
+      StructField("percentage", DoubleType, nullable = true),
+      StructField("result", StringType, nullable = true)
+    ))
+
+    val q7 =
+      spark
+        .read
+        .schema(schemaQ7)
+        .json(JsonFileFinder.findJsonFiles(outputPath + "/q7").head.getPath)
 
     val xQ7: Seq[String] =
       q7.select("result").collect().toSeq.map(_.toString().replaceAll("[\\[\\].]", ""))
@@ -96,7 +134,7 @@ object Visualization {
 
     // Save to JPEG
 
-    ChartJPEGExporter(chart).saveAsJPEG("plot-4.jpeg")*/
+    ChartJPEGExporter(chart).saveAsJPEG("plot-4.jpeg")
 
   }
 

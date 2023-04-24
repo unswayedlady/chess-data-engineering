@@ -26,7 +26,10 @@ object Queries {
     val spark = SparkSession
       .builder
       .appName("Chess")
-      .master("local[*]")
+//      .master("local[*]")
+      .config("spark.eventLog.enabled", value = true)
+      .config("spark.eventLog.dir", "C:\\Users\\milam\\OneDrive\\Escritorio\\spark-events")
+      .config("spark.history.fs.logDirectory", "C:\\Users\\milam\\OneDrive\\Escritorio\\spark-events")
       .getOrCreate()
 
     spark.sparkContext.setLogLevel("ERROR")
@@ -144,6 +147,7 @@ object Queries {
     q4
       .coalesce(1)
       .write
+      .mode(SaveMode.Overwrite)
       .format("json")
       .save(outputPath + "/q4")
 

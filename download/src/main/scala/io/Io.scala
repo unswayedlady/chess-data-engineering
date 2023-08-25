@@ -1,8 +1,8 @@
 package io
 
 import data.{Match, Profile}
-import spray.json._
 import manager.Parser._
+import spray.json._
 
 import java.io.FileWriter
 
@@ -11,11 +11,11 @@ class Io (val matchesFileName: String, val playersFileName: String){
   val matchesFile = new FileWriter(matchesFileName)
   val playersFile = new FileWriter(playersFileName)
 
-  def write(v: (Match, List[Profile])) : Unit = {
-    val m = v._1
-    matchesFile.write(m.toJson.toString() + "\n")
-    val l = v._2
-    l.foreach(p => playersFile.write(p.toJson.toString() + "\n"))
+  def write(infoDataset: (Match, List[Profile])) : Unit = {
+    val matchInfo = infoDataset._1
+    matchesFile.write(matchInfo.toJson.toString() + "\n")
+    val players = infoDataset._2
+    players.foreach(player => playersFile.write(player.toJson.toString() + "\n"))
   }
 
   def close() : Unit = {

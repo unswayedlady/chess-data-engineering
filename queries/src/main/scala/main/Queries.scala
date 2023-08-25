@@ -26,7 +26,7 @@ object Queries {
     val spark = SparkSession
       .builder
       .appName("Chess")
-//      .master("local[*]")
+      .master("local[*]")
       .config("spark.eventLog.enabled", value = true)
       .config("spark.eventLog.dir", "C:\\Users\\milam\\OneDrive\\Escritorio\\spark-events")
       .config("spark.history.fs.logDirectory", "C:\\Users\\milam\\OneDrive\\Escritorio\\spark-events")
@@ -176,7 +176,7 @@ object Queries {
     g
       .pageRank
       .resetProbability(0.15)
-      .tol(0.01)
+      .tol(0.05)
       .run()
       .vertices
       .distinct()

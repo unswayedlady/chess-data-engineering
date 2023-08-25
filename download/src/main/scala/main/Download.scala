@@ -11,6 +11,7 @@ object Download extends CaseApp[ArgumentsDownload] {
     Manager()
       .take(args.number)
       .foreach(io.write)
+    io.close()
   }
 
 }

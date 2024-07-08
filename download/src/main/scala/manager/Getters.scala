@@ -86,7 +86,8 @@ object Getters {
   def getPlayers(m: Match, s: Set[String]): Option[((Match, List[Profile]), Set[String])] = {
     itCounter.next()
     val ev: StateT[Option, Set[String], List[Option[Profile]]] =
-      List(m.white.username, m.black.username).traverse[StateT[Option, Set[String], *], Option[Profile]](
+      List(m.white.username, m.black.username)
+        .traverse[StateT[Option, Set[String], *], Option[Profile]](
         player => StateT(s => if (!s.contains(player))
           getPlayer(player) match{
             case None => None

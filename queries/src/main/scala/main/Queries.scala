@@ -27,9 +27,6 @@ object Queries {
       .builder
       .appName("Chess")
       .master("local[*]")
-      .config("spark.eventLog.enabled", value = true)
-      .config("spark.eventLog.dir", "C:\\Users\\milam\\OneDrive\\Escritorio\\spark-events")
-      .config("spark.history.fs.logDirectory", "C:\\Users\\milam\\OneDrive\\Escritorio\\spark-events")
       .getOrCreate()
 
     spark.sparkContext.setLogLevel("ERROR")
